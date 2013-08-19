@@ -66,7 +66,7 @@ class HTTPHandler(BasicHandler):
 
     def __send(self, headers, content):
         self.on_http_send(headers, content)
-        super(HTTPHandler, self).send(headers, content)
+        super(HTTPHandler, self).send(headers + content)
 
     def send(self, method='GET', host=None, resource='/', headers=None,
              content='', close=False):
