@@ -32,38 +32,55 @@ class HTTPHandler(BasicHandler):
         '''
             Handler for an HTTP connection.
 
-                http_response - entire reponse
-                http_status_code - integer code from status line
-                http_status_message - message from status line
-                http_headers - dictionary of headers
-                http_content - content
-                error - any error message
+                available variables (on_http_data)
 
-                on_http_request(self, headers, content)
-                on_http_response(self)
+                    http_message - entire message
+                    http_headers - dictionary of headers
+                    http_content - content
+                    error - any error message
+
+                    client:
+                        http_status_code - integer code from status line
+                        http_status_message - message from status line
+
+                    server:
+                        http_method - method from status line
+                        http_resource - resource form status line
+
+                on_http_send(self, headers, content) - useful for debugging
+                on_http_data(self) - when data is available
                 on_http_error(self)
         '''
         super(HTTPHandler, self).__init__(socket, context)
         self.__data = ''
         self.__setup()
 
-    def on_http_request(self, headers, content):
+    def on_http_send(self, headers, content):
         pass
 
-    def on_http_response(self):
+    def on_http_data(self):
         pass
 
     def on_http_error(self):
         pass
 
-    def send(self, method='GET', host=None, resource='/', headers={},
+    def __send(self, headers, content):
+        self.on_http_send(headers, content)
+        super(HTTPHandler, self).send(headers, content)
+
+    def send(self, method='GET', host=None, resource='/', headers=None,
              content='', close=False):
+
+        if not headers:
+            headers = {}
 
         if 'Date' not in headers:
             headers['Date'] = time.strftime(
                 "%a, %d %b %Y %H:%M:%S %Z", time.localtime())
+
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
+
         if close:
             headers['Connection'] = 'close'
 
@@ -74,12 +91,28 @@ class HTTPHandler(BasicHandler):
             method, resource, host,
             '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()]))
 
-        self.on_http_request(headers, content)
+        self.__send(headers, content)
 
-        super(HTTPHandler, self).send(headers + content)
+    def send_server(self, content='', code=200, message='OK', headers=None):
+
+        if headers == None:
+            headers = {}
+
+        if 'Date' not in headers:
+            headers['Date'] = time.strftime(
+                "%a, %d %b %Y %H:%M:%S %Z", time.localtime())
+
+        if 'Content-Length' not in headers:
+            headers['Content-Length'] = len(content)
+
+        headers = 'HTTP/1.1 %d %s\r\n%s\r\n\r\n' % (
+            code, message,
+            '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()]))
+
+        self.__send(headers, content)
 
     def __setup(self):
-        self.http_response = ''
+        self.http_message = ''
         self.http_status_code = None
         self.http_status_message = None
         self.http_headers = {}
@@ -87,7 +120,7 @@ class HTTPHandler(BasicHandler):
         self.__state = self.__status
 
     def on_data(self, data):
-        self.http_response += data
+        self.http_message += data
         self.__data += data
         while self.__state():
             pass
@@ -115,14 +148,21 @@ class HTTPHandler(BasicHandler):
         toks = line.split()
         if len(toks) < 3:
             return self.__error('Invalid status line: too few tokens')
-        if toks[0] != 'HTTP/1.1':
-            return self.__error('Invalid status line: not HTTP/1.1')
-        try:
-            self.http_status_code = toks[1]
-            self.http_status_code = int(self.http_status_code)
-        except ValueError:
-            return self.__error('Invalid status line: non-integer status code')
-        self.http_status_message = ' '.join(toks[2:])
+
+        if toks[0] == 'HTTP/1.1':
+            try:
+                self.http_status_code = toks[1]
+                self.http_status_code = int(self.http_status_code)
+            except ValueError:
+                return self.__error('Invalid status line: non-integer status code')
+            self.http_status_message = ' '.join(toks[2:])
+
+        else:
+            if toks[2] != 'HTTP/1.1':
+                return self.__error('Invalid status line: not HTTP/1.1')
+            self.http_method = toks[0]
+            self.http_resource = toks[1]
+
         self.__state = self.__header
         return True
 
@@ -132,34 +172,35 @@ class HTTPHandler(BasicHandler):
             return False
 
         if len(line) == 0:
-            if 'Content-Length' in self.http_headers:
-                try:
-                    self.__length = int(self.http_headers['Content-Length'])
-                except ValueError:
-                    return self.__error('Invalid content length')
-                self.__state = self.__content
-                return True
-
-            elif 'Transfer-Encoding' in self.http_headers:
+            if 'Transfer-Encoding' in self.http_headers:
                 if self.http_headers['Transfer-Encoding'] != 'chunked':
                     return self.__error('Unsupported Transfer-Encoding value')
                 self.__state = self.__chunked_length
-                return True
 
             else:
-                return self.__error('Invalid headers: no content length')
+                if 'Content-Length' in self.http_headers:
+                    try:
+                        self.__length = int(
+                            self.http_headers['Content-Length'])
+                    except ValueError:
+                        return self.__error('Invalid content length')
+                else:
+                    self.__length = 0
+                self.__state = self.__content
 
-        test = line.split(':', 1)
-        if len(test) != 2:
-            return self.__error('Invalid header: missing colon')
-        name, value = test
-        self.http_headers[name.strip()] = value.strip()
+        else:
+            test = line.split(':', 1)
+            if len(test) != 2:
+                return self.__error('Invalid header: missing colon')
+            name, value = test
+            self.http_headers[name.strip()] = value.strip()
+
         return True
 
     def __content(self):
         if len(self.__data) >= self.__length:
             self.http_content = self.__data[:self.__length]
-            self.on_http_response()
+            self.on_http_data()
             self.__data = self.__data[self.__length:]
             self.__setup()
             return True
@@ -203,7 +244,7 @@ class HTTPHandler(BasicHandler):
             return False
 
         if len(line) == 0:
-            self.on_http_response()
+            self.on_http_data()
             self.__setup()
             return True
 

@@ -4,7 +4,7 @@ from rhc.httphandler import HTTPHandler
 class MyHandler(HTTPHandler):
     def __init__(self, socket, content=None):
         super(MyHandler, self).__init__(socket, content)
-    def on_http_response(self):
+    def on_http_data(self):
         self.saved_http_headers = self.http_headers
         self.saved_http_content = self.http_content
 
@@ -57,11 +57,6 @@ class HTTPHandlerTest(unittest.TestCase):
         self.assertFalse(self.handler.closed)
         self.assertEqual(self.handler.http_headers['this'], 'is a good header')
 
-    def test_header_no_length(self):
-        self.handler.on_data('HTTP/1.1 100 HI THERE\r\n this : is a good header \n\n')
-        self.assertTrue(self.handler.closed)
-        self.assertEqual(self.handler.error, 'Invalid headers: no content length')
-
     def test_header_invalid_length(self):
         self.handler.on_data('HTTP/1.1 100 HI THERE\r\n this : is a good header \nContent-Length:HI\n\n')
         self.assertTrue(self.handler.closed)
@@ -108,3 +103,9 @@ class HTTPHandlerTest(unittest.TestCase):
         self.assertFalse(self.handler.closed)
         self.assertEqual(self.handler.saved_http_content, 'abcde123')
         self.assertEqual(self.handler.saved_http_headers['footer'], 'test')
+
+    def test_header_valid_server(self):
+        self.handler.on_data('YO /this/is/a/test HTTP/1.1\r\nHost:whatever\nContent-Length:0\r\n\r\n')
+        self.assertFalse(self.handler.closed)
+        self.assertTrue(self.handler.http_method, 'YO')
+        self.assertTrue(self.handler.http_resource, '/this/is/a/test')
