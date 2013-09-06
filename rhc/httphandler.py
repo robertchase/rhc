@@ -24,6 +24,7 @@ THE SOFTWARE.
 from tcpsocket import BasicHandler
 
 import time
+import urlparse
 
 
 class HTTPHandler(BasicHandler):
@@ -46,6 +47,7 @@ class HTTPHandler(BasicHandler):
                     server:
                         http_method - method from status line
                         http_resource - resource form status line
+                        http_query - dict of query string
 
                 on_http_send(self, headers, content) - useful for debugging
                 on_http_data(self) - when data is available
@@ -161,7 +163,14 @@ class HTTPHandler(BasicHandler):
             if toks[2] != 'HTTP/1.1':
                 return self.__error('Invalid status line: not HTTP/1.1')
             self.http_method = toks[0]
-            self.http_resource = toks[1]
+
+            resource = toks[1]
+            res = urlparse.urlparse(toks[1])
+            self.http_resource = res.path
+            self.http_query = {}
+            if res.query:
+                for n,v in urlparse.parse_qsl(res.query):
+                    self.http_query[n] = v
 
         self.__state = self.__header
         return True

@@ -36,17 +36,18 @@ class RESTHandler(HTTPHandler):
         The RESTHandler context is a RESTMapper instance, with mappings defined
         for each URI.
 
-        A handler function normally calls rest_result(...) to respond.
+        A handler function normally calls rest_result(...) to respond, or one of the cover functions.
 
-        Callbacks:
+        Callback
 
-            on_rest_not_found() - default: 202 Not Found
-            on_rest_server_exception(exception) - default: 500 Internal Server Error + content=str(exception)
+            on_rest_result(code, message, content)
 
-        Helper:
+        Helper (cover functions for rest_result):
 
+            rest_not_found() - default: 202 Not Found
             rest_unauthorized(self) - 401 Unauthorized
             rest_bad_request(self,content=None) - 400 Bad Request
+            rest_server_exception(exception) - default: 500 Internal Server Error + content=str(exception)
 
         Response:
 
@@ -59,10 +60,10 @@ class RESTHandler(HTTPHandler):
     def rest_unauthorized(self):
         self.rest_result(code=401, message='Unauthorized')
 
-    def on_rest_not_found(self):
+    def rest_not_found(self):
         self.rest_result(code=404, message='Not Found')
 
-    def on_rest_server_exception(self, exception):
+    def rest_server_exception(self, exception):
         self.rest_result(str(exception), code=500, message='Internal Server Error')
 
     def on_http_data(self):
@@ -72,15 +73,19 @@ class RESTHandler(HTTPHandler):
                 handler(self, *groups)
             except Exception, e:
                 traceback.format_exc()
-                self.on_rest_server_exception(e)
+                self.rest_server_exception(e)
         else:
-            self.on_rest_not_found()
+            self.rest_not_found()
 
     def rest_result(self, content=None, code=200, message='OK'):
         args = {'code':code, 'message':message}
         if content:
             args['content'] = content
+        self.on_rest_result(code, message, content)
         self.send_server(**args)
+
+    def on_rest_result(self, code, message, content):
+        pass
 
 class RESTMapper(object):
 
@@ -100,7 +105,7 @@ class RESTMapper(object):
         for mapping in self.__mapping:
             m = mapping.pattern.match(resource)
             if m:
-                handler = mapping.method[method.lower()]
+                handler = mapping.method.get(method.lower(), None)
                 if handler:
                     return handler, m.groups()
         return None, None

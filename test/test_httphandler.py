@@ -109,3 +109,10 @@ class HTTPHandlerTest(unittest.TestCase):
         self.assertFalse(self.handler.closed)
         self.assertTrue(self.handler.http_method, 'YO')
         self.assertTrue(self.handler.http_resource, '/this/is/a/test')
+
+    def test_query_string(self):
+        self.handler.on_data('YO /this/is/a/test?name=value&othername=othervalue HTTP/1.1\r\nHost:whatever\nContent-Length:0\r\n\r\n')
+        self.assertFalse(self.handler.closed)
+        self.assertTrue(self.handler.http_resource, '/this/is/a/test')
+        self.assertTrue(self.handler.http_query['name'], 'value')
+        self.assertTrue(self.handler.http_query['othername'], 'othervalue')
