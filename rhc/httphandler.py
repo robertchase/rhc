@@ -47,6 +47,7 @@ class HTTPHandler(BasicHandler):
                     server:
                         http_method - method from status line
                         http_resource - resource form status line
+                        http_query_string - unmodified query string
                         http_query - dict of query string
 
                 on_http_send(self, headers, content) - useful for debugging
@@ -168,8 +169,10 @@ class HTTPHandler(BasicHandler):
             res = urlparse.urlparse(toks[1])
             self.http_resource = res.path
             self.http_query = {}
+            self.http_query_string = ''
             if res.query:
-                for n,v in urlparse.parse_qsl(res.query):
+                self.http_query_string = res.query
+                for n, v in urlparse.parse_qsl(res.query):
                     self.http_query[n] = v
 
         self.__state = self.__header
