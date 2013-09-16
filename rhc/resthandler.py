@@ -61,14 +61,16 @@ class RESTHandler(HTTPHandler):
         else:
             self.rest_send(code=404, message='Not Found')
 
-    def rest_send(self, content=None, code=200, message='OK'):
+    def rest_send(self, content=None, code=200, message='OK', headers=None):
         args = {'code': code, 'message': message}
         if content:
             args['content'] = content
-        self.on_rest_send(code, message, content)
+        if headers:
+            args['headers'] = headers
+        self.on_rest_send(code, message, content, headers)
         self.send_server(**args)
 
-    def on_rest_send(self, code, message, content):
+    def on_rest_send(self, code, message, content, headers):
         pass
 
 
