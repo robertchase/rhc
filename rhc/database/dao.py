@@ -88,8 +88,7 @@ class DAO(object):
         else:
             table = self.autoload(name)
             if table:
-                self._tables[name] = table
-                table._tables = self._tables
+                self.join(table)
             else:
                 raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
         return table
@@ -158,3 +157,19 @@ class DAO(object):
     @classmethod
     def query(cls):
         return Query(cls)
+
+    def join(self, obj):
+        '''add a DAO to the list of tables to which this object is joined
+
+        Allows the DAO.table_name or DAO[table_name] syntax to work for
+        the specified object.
+
+        Parameters:
+            obj - object to 'join' to self
+
+        Returns:
+            self
+        '''
+        self._tables[obj.TABLE] = obj
+        obj._tables = self._tables
+        return self
