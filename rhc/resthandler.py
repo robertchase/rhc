@@ -23,45 +23,94 @@ THE SOFTWARE.
 '''
 import json
 import re
-
-import traceback
+import sys
+import types
+import urlparse
 
 from httphandler import HTTPHandler
 
 
-class RESTHandler(HTTPHandler):
+class RESTResult(object):
+    def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
+        self.code = code
 
+        if type(content) in (types.DictType, types.ListType):
+            try:
+                content = json.dumps(content)
+                content_type = 'application/json'
+            except Exception:
+                content = str(content)
+
+        if content_type:
+            if not headers:
+                headers = {}
+            headers['Content-Type'] = content_type
+
+        if not message:
+            message = {
+                200: 'OK',
+                201: 'Created',
+                302: 'Found',
+                400: 'Bad Request',
+                401: 'Unauthorized',
+                404: 'Not Found',
+            }.get(code, '')
+        self.message = message
+        self.content = content
+        self.headers = headers
+
+
+class RESTHandler(HTTPHandler):
     '''
         Identify and execute REST handler functions.
 
         The RESTHandler context is a RESTMapper instance, with mappings defined
-        for each URI.
+        for each URI. When an http request URI matches a mapping regex and
+        method, the respective rest_handler is called with this object as the
+        first parameter, followed by any regex groups.
 
-        A handler function calls rest_send(...) to send a response.
+        A rest_handler function returns a RESTResult object.
 
-        To send response:
-
-            rest_send(content, code, message)
-
-        Callback
-
-            on_rest_send(code, message, content)
+        Callback methods:
+            on_rest_exception(self, exc_type, exc_value, exc_traceback)
+            on_rest_send(self, code, message, content, headers)
     '''
 
     def on_http_data(self):
-        handler, groups = self.context.match(
-            self.http_resource, self.http_method)
+        handler, groups = self.context._match(self.http_resource, self.http_method)
         if handler:
             try:
-                handler(self, *groups)
-            except Exception, e:
-                traceback.format_exc()
-                self.rest_send(str(
-                    e), code=501, message='Internal Server Error')
+                self.on_rest_data(*groups)
+                result = handler(self, *groups)
+                self._rest_send(result.content, result.code, result.message, result.headers)
+            except Exception:
+                content = self.on_rest_exception(*sys.exc_info())
+                kwargs = dict(code=501, message='Internal Server Error')
+                if content:
+                    kwargs['content'] = str(content)
+                self._rest_send(**kwargs)
         else:
-            self.rest_send(code=404, message='Not Found')
+            self._rest_send(code=404, message='Not Found')
 
-    def rest_send(self, content=None, code=200, message='OK', headers=None):
+    def on_rest_data(self, *groups):
+        pass
+
+    def on_rest_exception(self, exception_type, exception_value, exception_traceback):
+        ''' handle Exception raised during REST processing
+
+        If a REST handler raises an Exception, this method is called with the sys.exc_info
+        tuple to allow for logging or any other special handling.
+
+        If a value is returned, it will be sent as the content in the
+        "501 Internal Server Error" response.
+
+        To return a traceback string in the 501 message:
+            import traceback
+            return traceback.format_exc(exception_traceback)
+        '''
+        return None
+
+    def _rest_send(self, content=None, code=200, message='OK', headers=None):
         args = {'code': code, 'message': message}
         if content:
             args['content'] = content
@@ -75,18 +124,22 @@ class RESTHandler(HTTPHandler):
 
 
 class RESTMapper(object):
-
     '''
         A URI-to-executable mapper that is passed as the context for a
         RESTHandler.
 
-        The on_http_data method of the RESTHandler calls the match method
+        The on_http_data method of the RESTHandler calls the _match method
         on this object to resolve a URI to a previously defined pattern.
         Patterns are added with the add method.
     '''
 
     def __init__(self):
         self.__mapping = []
+        self.map()
+
+    def map(self):
+        '''convenience function for initialization '''
+        pass
 
     def add(self, pattern, get=None, post=None, put=None, delete=None):
         '''
@@ -96,7 +149,7 @@ class RESTMapper(object):
             groups are included in the regex, they will be passed as
             parameters to the matching method.
 
-            The match method will evaluate each mapping in the order
+            The _match method will evaluate each mapping in the order
             that they are added. The first match wins.
 
             For example:
@@ -114,11 +167,9 @@ class RESTMapper(object):
                 in this case, my_func must be defined to take the
                 parameter.
         '''
-        self.__mapping.append(
-            RESTMapping(pattern, get, post, put, delete)
-        )
+        self.__mapping.append(RESTMapping(pattern, get, post, put, delete))
 
-    def match(self, resource, method):
+    def _match(self, resource, method):
         '''
             Match a resource + method to a RESTMapping
 
@@ -153,3 +204,72 @@ class RESTMapping(object):
             'put': put,
             'delete': delete
         }
+
+
+def content_to_json(*fields):
+    '''decorator that converts handler.html_content to handler.json
+
+    The content must be a valid json document.
+
+    Arguments:
+        fields - an optional list of field names. if specified, the names will
+                 be used to look up values in the json dictionary which are
+                 appended, in order, to the rest_handler's argument list.
+
+    Errors:
+        400 - json conversion fails or specified fields not present in json
+    '''
+    return _content_to_json(*fields)
+
+
+def form_to_json(*fields):
+    '''decorator that converts handler.html_content form data to handler.json
+
+    The content must be a valid uri. The assumption is that each name/value
+    pair in the uri is one-to-one.
+
+    Arguments:
+        fields - an optional list of field names. if specified, the names will
+                 be used to look up values in the json dictionary which are
+                 appended, in order, to the rest_handler's argument list.
+
+    Errors:
+        400 - json conversion fails or specified fields not present in json
+    '''
+    return _content_to_json(*fields, form=True)
+
+
+def _content_to_json(*fields, **kwargs):
+    '''decorator that converts handler.html_content to handler.json
+
+    The content can either be a valid json document, or the url encoded result
+    of an html form POST (see the 'form' keyword argument).
+
+    Arguments:
+        fields - an optional list of field names. if specified, the names will
+                 be used to look up values in the json dictionary which are
+                 appended, in order, to the rest_handler's argument list.
+
+    Keyword Arguments:
+        form - if True, content is the result of a POSTed HTML form which is
+               converted from url encoded data into a dict.
+
+    Errors:
+        400 - json conversion fails or specified fields not present in json
+    '''
+    def _content_to_json(rest_handler):
+        def inner(handler, *args):
+            try:
+                form = kwargs.get('form', False)
+                if form:
+                    handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
+                else:
+                    handler.json = json.loads(handler.http_content)
+                if fields:
+                    args = list(args)
+                    args.extend(handler.json[n] for n in fields)
+            except Exception:
+                return RESTResult(400)
+            return rest_handler(handler, *args)
+        return inner
+    return _content_to_json
