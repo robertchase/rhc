@@ -44,7 +44,7 @@ class Client(object):
     '''
     def __init__(self, host, port):
         self.connection = None
-    
+
         class Context(object):
             def __init__(self):
                 self.handler = None
@@ -54,18 +54,22 @@ class Client(object):
             def __init__(self, socket, context=None):
                 super(Handler, self).__init__(socket, context)
                 self.data = ''
+
             def on_ready(self):
                 self.context.done = True
                 self.context.handler = self
+
             def on_close(self):
                 self.context.done = True
+
             def on_fail(self):
                 raise Exception('Connection to %s failed: %s' % (self.name, self.error))
+
             def on_data(self, data):
                 self.data += data
 
         ctx = Context()
-        Server().add_connection((host,port), Handler, ctx)
+        Server().add_connection((host, port), Handler, ctx)
         while not ctx.done:
             Server().service()
             time.sleep(.01)
@@ -240,7 +244,7 @@ class Server (Singleton):
           seconds or when the first activity is detected.
 
           if activity is detected (and handled) on the first call to select,
-          each socket will be given time to do one thing after which the 
+          each socket will be given time to do one thing after which the
           process will continue until all activity is handled. on additional
           calls to select, the delay value will be zero (no delay).
         '''
@@ -290,7 +294,7 @@ class BasicHandler (object):
     def __init__(self, socket, context=None):
         self.RECV_LEN = 1024
         self.MAX_RECV_LEN = 0
-        self.NAGLE = True
+        self.NAGLE = False
         self.start = time.time()
         self.context = context
         self.closed = False
