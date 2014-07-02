@@ -24,19 +24,16 @@ THE SOFTWARE.
 import sys
 import syslog
 import time
-from singleton import Singleton
 from messagehandler import MessageHandler
 
 
-class Log (Singleton):
+class Log(object):
 
-    def singleton(self):
+    def __init__(self):
         self.syslog = True  # turn syslog on/off
         self.logmsg = lambda x, y: None
 
-    def setup(self, messagefile=[],
-              name='LOG', facility=syslog.LOG_LOCAL4,
-              verbose=False, stdout=False, silent=False):
+    def setup(self, messagefile=[], name='LOG', facility=syslog.LOG_LOCAL4, verbose=False, stdout=False, silent=False):
         if not silent:
             handler = MessageHandler(messagefile, self, verbose, stdout)
             self.logmsg = handler.logmsg
@@ -63,20 +60,22 @@ class Log (Singleton):
         self.__log(syslog.LOG_DEBUG, message)
 
     def info(self, message):
-        self.__log(syslog.LOG_INFO, message, '<I> [01]')
+        self.__log(syslog.LOG_INFO, message, '<I>')
 
     def notice(self, message):
-        self.__log(syslog.LOG_NOTICE, message, '<W> [01]')
+        self.__log(syslog.LOG_NOTICE, message, '<N>')
 
     def warning(self, message):
-        self.__log(syslog.LOG_WARNING, message, '<W> [01]')
+        self.__log(syslog.LOG_WARNING, message, '<W>')
 
     def danger(self, message):
-        self.__log(syslog.LOG_ERR, message, '<D> [01]')
+        self.__log(syslog.LOG_ERR, message, '<E>')
 
     def critical(self, message):
-        self.__log(syslog.LOG_CRIT, message, '<F> [01]')
+        self.__log(syslog.LOG_CRIT, message, '<C>')
 
 
 def logmsg(id, args=None):
-    Log().logmsg(id, args)
+    LOG.logmsg(id, args)
+
+LOG = Log()
