@@ -46,7 +46,7 @@ class HTTPHandler(BasicHandler):
 
                     server:
                         http_method - method from status line
-                        http_resource - resource form status line
+                        http_resource - resource from status line
                         http_query_string - unmodified query string
                         http_query - dict of query string
 
@@ -66,6 +66,11 @@ class HTTPHandler(BasicHandler):
 
     def on_http_error(self):
         pass
+
+    def _on_http_data(self):
+        self.on_http_data()
+        if self.http_headers.get('Connection') == 'close':
+            self.close()
 
     def __send(self, headers, content):
         self.on_http_send(headers, content)
@@ -98,7 +103,7 @@ class HTTPHandler(BasicHandler):
 
     def send_server(self, content='', code=200, message='OK', headers=None):
 
-        if headers == None:
+        if headers is None:
             headers = {}
 
         if 'Date' not in headers:
@@ -146,12 +151,13 @@ class HTTPHandler(BasicHandler):
 
     def __status(self):
         line = self.__line()
-        if line == None:
+        if line is None:
             return False
         toks = line.split()
         if len(toks) < 3:
             return self.__error('Invalid status line: too few tokens')
 
+        # HTTP/1.1 200 OK
         if toks[0] == 'HTTP/1.1':
             try:
                 self.http_status_code = toks[1]
@@ -160,12 +166,12 @@ class HTTPHandler(BasicHandler):
                 return self.__error('Invalid status line: non-integer status code')
             self.http_status_message = ' '.join(toks[2:])
 
+        # GET /resource HTTP/1.1
         else:
             if toks[2] != 'HTTP/1.1':
                 return self.__error('Invalid status line: not HTTP/1.1')
             self.http_method = toks[0]
 
-            resource = toks[1]
             res = urlparse.urlparse(toks[1])
             self.http_resource = res.path
             self.http_query = {}
@@ -180,7 +186,7 @@ class HTTPHandler(BasicHandler):
 
     def __header(self):
         line = self.__line()
-        if line == None:
+        if line is None:
             return False
 
         if len(line) == 0:
@@ -212,7 +218,7 @@ class HTTPHandler(BasicHandler):
     def __content(self):
         if len(self.__data) >= self.__length:
             self.http_content = self.__data[:self.__length]
-            self.on_http_data()
+            self._on_http_data()
             self.__data = self.__data[self.__length:]
             self.__setup()
             return True
@@ -220,7 +226,7 @@ class HTTPHandler(BasicHandler):
 
     def __chunked_length(self):
         line = self.__line()
-        if line == None:
+        if line is None:
             return False
         line = line.split(';', 1)[0]
         try:
@@ -243,7 +249,7 @@ class HTTPHandler(BasicHandler):
 
     def __chunked_content_end(self):
         line = self.__line()
-        if line == None:
+        if line is None:
             return False
         if line == '':
             self.__state = self.__chunked_length
@@ -252,11 +258,11 @@ class HTTPHandler(BasicHandler):
 
     def __footer(self):
         line = self.__line()
-        if line == None:
+        if line is None:
             return False
 
         if len(line) == 0:
-            self.on_http_data()
+            self._on_http_data()
             self.__setup()
             return True
 
