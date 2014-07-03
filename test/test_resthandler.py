@@ -1,6 +1,7 @@
 import unittest
 from rhc.resthandler import RESTMapper
 
+
 class RESTHandlerTest(unittest.TestCase):
 
     def setUp(self):
@@ -11,17 +12,17 @@ class RESTHandlerTest(unittest.TestCase):
         self.c.add('/foo$', put=5)
 
     def test_basic(self):
-        h, g = self.c.match('/test', 'GET')
+        h, g = self.c._match('/test', 'GET')
         self.assertEqual(h, 1)
         self.assertEqual(g, ())
 
     def test_nomatch(self):
-        h, g = self.c.match('/testt', 'GET')
+        h, g = self.c._match('/testt', 'GET')
         self.assertIsNone(h)
         self.assertIsNone(g)
 
     def test_multiple(self):
-        h, g = self.c.match('/foo', 'post')
+        h, g = self.c._match('/foo', 'post')
         self.assertEqual(h, 2)
-        h, g = self.c.match('/foo', 'put')
+        h, g = self.c._match('/foo', 'put')
         self.assertEqual(h, 5)

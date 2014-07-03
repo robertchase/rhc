@@ -72,6 +72,7 @@ class RESTHandler(HTTPHandler):
         A rest_handler function returns a RESTResult object.
 
         Callback methods:
+            on_rest_data(self, *groups)
             on_rest_exception(self, exc_type, exc_value, exc_traceback)
             on_rest_send(self, code, message, content, headers)
     '''
@@ -93,6 +94,7 @@ class RESTHandler(HTTPHandler):
             self._rest_send(code=404, message='Not Found')
 
     def on_rest_data(self, *groups):
+        ''' called on rest_handler match '''
         pass
 
     def on_rest_exception(self, exception_type, exception_value, exception_traceback):
@@ -240,27 +242,10 @@ def form_to_json(*fields):
 
 
 def _content_to_json(*fields, **kwargs):
-    '''decorator that converts handler.html_content to handler.json
-
-    The content can either be a valid json document, or the url encoded result
-    of an html form POST (see the 'form' keyword argument).
-
-    Arguments:
-        fields - an optional list of field names. if specified, the names will
-                 be used to look up values in the json dictionary which are
-                 appended, in order, to the rest_handler's argument list.
-
-    Keyword Arguments:
-        form - if True, content is the result of a POSTed HTML form which is
-               converted from url encoded data into a dict.
-
-    Errors:
-        400 - json conversion fails or specified fields not present in json
-    '''
     def _content_to_json(rest_handler):
         def inner(handler, *args):
             try:
-                form = kwargs.get('form', False)
+                form = kwargs.get('form', False)  # HTML form (URI from POST) or json document?
                 if form:
                     handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
                 else:
