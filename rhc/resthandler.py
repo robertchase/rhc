@@ -221,7 +221,7 @@ def content_to_json(*fields):
     Errors:
         400 - json conversion fails or specified fields not present in json
     '''
-    return _content_to_json(*fields)
+    return _content_to_json(False, *fields)
 
 
 def form_to_json(*fields):
@@ -238,23 +238,22 @@ def form_to_json(*fields):
     Errors:
         400 - json conversion fails or specified fields not present in json
     '''
-    return _content_to_json(*fields, form=True)
+    return _content_to_json(True, *fields)
 
 
-def _content_to_json(*fields, **kwargs):
-    def _content_to_json(rest_handler):
+def _content_to_json(is_form, *fields):
+    def __content_to_json(rest_handler):
         def inner(handler, *args):
             try:
-                form = kwargs.get('form', False)  # HTML form (URI from POST) or json document?
-                if form:
+                if is_form:
                     handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
                 else:
                     handler.json = json.loads(handler.http_content)
                 if fields:
                     args = list(args)
                     args.extend(handler.json[n] for n in fields)
-            except Exception:
-                return RESTResult(400)
+            except Exception as e:
+                return RESTResult(400, e.message)
             return rest_handler(handler, *args)
         return inner
-    return _content_to_json
+    return __content_to_json
