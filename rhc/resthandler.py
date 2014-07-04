@@ -188,7 +188,7 @@ class RESTMapper(object):
         for mapping in self.__mapping:
             m = mapping.pattern.match(resource)
             if m:
-                handler = mapping.method.get(method.lower(), None)
+                handler = mapping.method.get(method.lower())
                 if handler:
                     return handler, m.groups()
         return None, None
@@ -209,46 +209,29 @@ class RESTMapping(object):
 
 
 def content_to_json(*fields):
-    '''decorator that converts handler.html_content to handler.json
+    '''rest_handler decorator that converts handler.html_content to handler.json
 
-    The content must be a valid json document.
+    The content must be a valid json document or a valid URI query string (as
+    produced by a POSTed HTML form). If the content starts with a '[' or '{',
+    it is treated as json; else it is treated as a URI. The URI only expects
+    one value per key.
 
     Arguments:
-        fields - an optional list of field names. if specified, the names will
+        fields - an optional list of field names. If specified, the names will
                  be used to look up values in the json dictionary which are
-                 appended, in order, to the rest_handler's argument list.
+                 appended, in order, to the rest_handler's argument list. The
+                 specified fields must be present in the content.
 
     Errors:
         400 - json conversion fails or specified fields not present in json
     '''
-    return _content_to_json(False, *fields)
-
-
-def form_to_json(*fields):
-    '''decorator that converts handler.html_content form data to handler.json
-
-    The content must be a valid uri. The assumption is that each name/value
-    pair in the uri is one-to-one.
-
-    Arguments:
-        fields - an optional list of field names. if specified, the names will
-                 be used to look up values in the json dictionary which are
-                 appended, in order, to the rest_handler's argument list.
-
-    Errors:
-        400 - json conversion fails or specified fields not present in json
-    '''
-    return _content_to_json(True, *fields)
-
-
-def _content_to_json(is_form, *fields):
     def __content_to_json(rest_handler):
         def inner(handler, *args):
             try:
-                if is_form:
-                    handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
-                else:
+                if handler.http_content.lstrip()[0] in '[{':
                     handler.json = json.loads(handler.http_content)
+                else:
+                    handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
                 if fields:
                     args = list(args)
                     args.extend(handler.json[n] for n in fields)
