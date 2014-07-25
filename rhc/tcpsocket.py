@@ -234,7 +234,7 @@ class Server (Singleton):
         # --- zero when no sockets have activity
         return count
 
-    def service(self, delay=0):
+    def service(self, delay=0, max_iterations=0):
         '''
           exhaust all network activity (arriving data and
           connecting/disconnecting sockets).
@@ -248,10 +248,15 @@ class Server (Singleton):
           process will continue until all activity is handled. on additional
           calls to select, the delay value will be zero (no delay).
         '''
+        iterations = 0
         did_anything = False
         while (self._service(delay)):
             did_anything = True
             delay = 0
+            if max_iterations:
+                iterations += 1
+                if iterations == max_iterations:
+                    break
         return did_anything
 
 
