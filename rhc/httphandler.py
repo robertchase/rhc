@@ -46,6 +46,7 @@ class HTTPHandler(BasicHandler):
 
                     server:
                         http_method - method from status line
+                        http_multipart - list of HTTPPart objects
                         http_resource - resource from status line
                         http_query_string - unmodified query string
                         http_query - dict of query string
@@ -67,7 +68,23 @@ class HTTPHandler(BasicHandler):
     def on_http_error(self):
         pass
 
+    def _multipart(self):
+        cache = self.__data
+        try:
+            self.http_headers['Content-Type'], boundary = self.http_headers['Content-Type'].split('; boundary=')
+            for self.__data in [p[2:] for p in self.http_content.split('--' + boundary)][1:-1]:  # split, remove \r\n and ignore first & last; stuff into __data for __line
+                headers = dict(l.split(': ', 1) for l in iter(self.__line, ''))
+                if 'Content-Disposition' in headers:
+                    headers['Content-Disposition'], rem = headers['Content-Disposition'].split('; ', 1)
+                    disposition = dict(part.split('=', 1) for part in rem.split('; '))
+                self.http_multipart.append(HTTPPart(headers, disposition, self.__data))
+        except Exception:
+            self.__error('Malformed multipart message')
+        self.__data = cache
+
     def _on_http_data(self):
+        if self.http_headers.get('Content-Type', '').startswith('multipart'):
+            self._multipart()
         self.on_http_data()
         if self.http_headers.get('Connection') == 'close':
             self.close()
@@ -97,7 +114,8 @@ class HTTPHandler(BasicHandler):
 
         headers = '%s %s HTTP/1.1\r\nHost: %s\r\n%s\r\n\r\n' % (
             method, resource, host,
-            '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()]))
+            '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()])
+        )
 
         self.__send(headers, content)
 
@@ -125,6 +143,7 @@ class HTTPHandler(BasicHandler):
         self.http_status_message = None
         self.http_headers = {}
         self.http_content = ''
+        self.http_multipart = []
         self.__state = self.__status
 
     def on_data(self, data):
@@ -272,3 +291,17 @@ class HTTPHandler(BasicHandler):
         name, value = test
         self.http_headers[name.strip()] = value.strip()
         return True
+
+
+class HTTPPart(object):
+
+    def __init__(self, headers, disposition, content):
+        '''
+            Container for one part of a multipart message.
+
+            The disposition is a dict with the k:v pairs from the 'Content-Disposition'
+            header, where things like filename are stored.
+        '''
+        self.headers = headers
+        self.disposition = disposition
+        self.content = content
