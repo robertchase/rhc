@@ -139,11 +139,15 @@ class HTTPHandler(BasicHandler):
 
     def __setup(self):
         self.http_message = ''
-        self.http_status_code = None
-        self.http_status_message = None
         self.http_headers = {}
         self.http_content = ''
+        self.http_status_code = None
+        self.http_status_message = None
+        self.http_method = None
         self.http_multipart = []
+        self.http_resource = None
+        self.http_query_string = None
+        self.http_query = {}
         self.__state = self.__status
 
     def on_data(self, data):

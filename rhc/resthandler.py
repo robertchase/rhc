@@ -30,6 +30,20 @@ import urlparse
 from httphandler import HTTPHandler
 
 
+class RESTRequest(object):
+
+    def __init__(self, handler):
+        self.handler = handler
+        self.http_message = handler.http_message
+        self.http_headers = handler.http_headers
+        self.http_content = handler.http_content
+        self.http_method = handler.http_method
+        self.http_multipart = handler.http_multipart
+        self.http_resource = handler.http_resource
+        self.http_query_string = handler.http_query_string
+        self.http_query = handler.http_query
+
+
 class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
         self.code = code
@@ -69,7 +83,10 @@ class RESTHandler(HTTPHandler):
         method, the respective rest_handler is called with this object as the
         first parameter, followed by any regex groups.
 
-        A rest_handler function returns a RESTResult object.
+        A rest_handler function returns a RESTResult object when an immediate
+        response is available. In order to delay a response (to prevent
+        blocking the server) a rest_handler can return a None, followed by a
+        future call to rest_response.
 
         Callback methods:
             on_rest_data(self, *groups)
@@ -82,8 +99,9 @@ class RESTHandler(HTTPHandler):
         if handler:
             try:
                 self.on_rest_data(*groups)
-                result = handler(self, *groups)
-                self._rest_send(result.content, result.code, result.message, result.headers)
+                result = handler(RESTRequest(self), *groups)
+                if result:
+                    self.rest_response(result)
             except Exception:
                 content = self.on_rest_exception(*sys.exc_info())
                 kwargs = dict(code=501, message='Internal Server Error')
@@ -96,6 +114,9 @@ class RESTHandler(HTTPHandler):
     def on_rest_data(self, *groups):
         ''' called on rest_handler match '''
         pass
+
+    def rest_response(self, result):
+        self._rest_send(result.content, result.code, result.message, result.headers)
 
     def on_rest_exception(self, exception_type, exception_value, exception_traceback):
         ''' handle Exception raised during REST processing
@@ -226,17 +247,17 @@ def content_to_json(*fields):
         400 - json conversion fails or specified fields not present in json
     '''
     def __content_to_json(rest_handler):
-        def inner(handler, *args):
+        def inner(request, *args):
             try:
-                if handler.http_content.lstrip()[0] in '[{':
-                    handler.json = json.loads(handler.http_content)
+                if request.http_content and request.http_content.lstrip()[0] in '[{':
+                    request.json = json.loads(request.http_content)
                 else:
-                    handler.json = {n: v for n, v in urlparse.parse_qsl(handler.http_content)}
+                    request.json = {n: v for n, v in urlparse.parse_qsl(request.http_content)}
                 if fields:
                     args = list(args)
-                    args.extend(handler.json[n] for n in fields)
+                    args.extend(request.json[n] for n in fields)
             except Exception as e:
                 return RESTResult(400, e.message)
-            return rest_handler(handler, *args)
+            return rest_handler(request, *args)
         return inner
     return __content_to_json
