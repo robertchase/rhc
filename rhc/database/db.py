@@ -22,14 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 import pymysql
+import threading
+from threading import current_thread
 
 
 class _DB(object):
 
     def __init__(self):
         self.__kwargs = None
-        self.__connection = None
         self.__transaction = 0
+        self.__local = threading.local()
 
     def __enter__(self):
         self.start_transaction()
@@ -44,23 +46,26 @@ class _DB(object):
     def setup(self, **kwargs):
         kwargs['autocommit'] = False
         kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED'
+        if kwargs.pop('dirty', False):
+            kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED'
         self.__commit = kwargs.pop('commit', True)
         self.__close = kwargs.pop('close', False)
         self.__kwargs = kwargs
-        self.__connection = None
         return self
 
     def _connection(self):
-        if self.__connection:
-            self.__connection.ping()
+        connection = getattr(self.__local, 'connection', None)
+        if connection:
+            connection.ping()
         else:
             if not self.__kwargs:
                 raise Exception('must call setup before using DB')
-            self.__connection = pymysql.connect(**self.__kwargs)
-        return self.__connection
+            connection = pymysql.connect(**self.__kwargs)
+            self.__local.connection = connection
+        return connection
 
     def close(self):
-        self.__connection.close()
+        self._connection().close()
 
     def cursor(self):
         return self._connection().cursor()
