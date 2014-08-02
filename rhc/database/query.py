@@ -21,8 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
-from itertools import izip
-
 from db import DB
 
 
@@ -108,17 +106,15 @@ class Query(object):
             self._executed_stmt = cur._executed
             for rs in cur:
                 s = {}
-                row = [(n, v) for n, v in izip(self._column_names, rs)]
-                main_obj = None
+                row = zip(self._column_names, rs)
                 for c in self._classes:
                     l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
                     val, row = row[:l], row[l:]
-                    o = c(**{n: v for n, v in val})
+                    o = c(**dict(val))
                     s[c.TABLE] = o
                     o._tables = s
-                    if main_obj is None:
-                        main_obj = o
-                result.append(main_obj)
+                    if len(s) == 1:
+                        result.append(o)
             if one:
                 result = result[0] if len(result) else None
 
