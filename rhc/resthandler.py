@@ -98,8 +98,9 @@ class RESTHandler(HTTPHandler):
         handler, groups = self.context._match(self.http_resource, self.http_method)
         if handler:
             try:
-                self.on_rest_data(*groups)
-                result = handler(RESTRequest(self), *groups)
+                request = RESTRequest(self)
+                self.on_rest_data(request, *groups)
+                result = handler(request, *groups)
                 if result:
                     self.rest_response(result)
             except Exception:
@@ -111,7 +112,7 @@ class RESTHandler(HTTPHandler):
         else:
             self._rest_send(code=404, message='Not Found')
 
-    def on_rest_data(self, *groups):
+    def on_rest_data(self, request, *groups):
         ''' called on rest_handler match '''
         pass
 
