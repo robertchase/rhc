@@ -75,7 +75,7 @@ class Log(object):
         self.__log(syslog.LOG_CRIT, message, '<C>')
 
 
-def logmsg(id, args=None):
+def logmsg(id, *args):
     LOG.logmsg(id, args)
 
 LOG = Log()
