@@ -23,6 +23,7 @@ THE SOFTWARE.
 '''
 from datetime import datetime
 from itertools import chain
+import json
 
 from db import DB
 from query import Query
@@ -34,12 +35,14 @@ class DAO(object):
     # FIELDS = ()
     CALCULATED_FIELDS = {}
     DEFAULT = {}
+    JSON_FIELDS = ()
 
     def __init__(self, **kwargs):
         self._tables = {}
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
+        self._jsonify(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
         self.after_init()
@@ -81,6 +84,12 @@ class DAO(object):
                     else:
                         kwargs[f] = None
 
+    def _jsonify(self, kwargs):
+        if 'id' in kwargs:
+            for f in self.JSON_FIELDS:
+                if kwargs[f]:
+                    kwargs[f] = json.loads(kwargs[f])
+
     def __getattr__(self, name):
         ''' see if name refers to some other table added during query.join operation '''
         if name in self._tables:
@@ -115,6 +124,10 @@ class DAO(object):
         return json
 
     def save(self):
+        cache = {}
+        for n in self.JSON_FIELDS:
+            cache[n] = getattr(self, n)
+            setattr(self, n, json.dumps(getattr(self, n)))
         self.before_save()
         if 'id' not in self.FIELDS:
             raise Exception('DAO.save() requireds that an "id" field be defined')
@@ -135,6 +148,8 @@ class DAO(object):
         if new:
             setattr(self, 'id', cur.lastrowid)
         self.after_save()
+        for n in self.JSON_FIELDS:
+            setattr(self, n, cache[n])
 
     def before_save(self):
         pass
