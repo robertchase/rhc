@@ -103,6 +103,9 @@ class RESTHandler(HTTPHandler):
                 result = handler(request, *groups)
                 if result:
                     self.rest_response(result)
+                else:
+                    if 'Connection' in self.http_headers:
+                        del self.http_headers['Connection']
             except Exception:
                 content = self.on_rest_exception(*sys.exc_info())
                 kwargs = dict(code=501, message='Internal Server Error')
