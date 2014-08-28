@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
-from datetime import datetime
+from datetime import datetime, date
 from itertools import chain
 import json
 
@@ -113,7 +113,7 @@ class DAO(object):
             raise AttributeError('%s is not a valid field name' % name)
 
     def _json(self, value):
-        if isinstance(value, datetime):
+        if isinstance(value, (datetime, date)):
             return value.isoformat()
         return value
 
@@ -124,13 +124,13 @@ class DAO(object):
         return json
 
     def save(self):
+        if 'id' not in self.FIELDS:
+            raise Exception('DAO.save() requireds that an "id" field be defined')
         cache = {}
         for n in self.JSON_FIELDS:
             cache[n] = getattr(self, n)
-            setattr(self, n, json.dumps(getattr(self, n)))
+            setattr(self, n, json.dumps(self.on_json_save(n, getattr(self, n))))
         self.before_save()
-        if 'id' not in self.FIELDS:
-            raise Exception('DAO.save() requireds that an "id" field be defined')
         fields = [f for f in self.FIELDS if f != 'id']
         args = [self.__dict__[f] for f in fields]
         if not hasattr(self, 'id'):
@@ -150,6 +150,9 @@ class DAO(object):
         self.after_save()
         for n in self.JSON_FIELDS:
             setattr(self, n, cache[n])
+
+    def on_json_save(self, name, obj):
+        return obj
 
     def before_save(self):
         pass
