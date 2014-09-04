@@ -132,8 +132,9 @@ class DAO(object):
             raise Exception('DAO.save() requireds that an "id" field be defined')
         cache = {}
         for n in self.JSON_FIELDS:
-            cache[n] = getattr(self, n)
-            setattr(self, n, json.dumps(self.on_json_save(n, getattr(self, n))))
+            v = cache[n] = getattr(self, n)
+            if v:
+                setattr(self, n, json.dumps(self.on_json_save(n, v)))
         self.before_save()
         if not hasattr(self, 'id'):
             self.before_insert()
