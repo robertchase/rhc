@@ -42,12 +42,17 @@ class DAO(object):
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
-        self._jsonify(kwargs)
+        if 'id' in kwargs:
+            self.on_load()
+            self._jsonify(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
         self.after_init()
 
     def on_init(self, kwargs):
+        pass
+
+    def on_load(self, kwargs):
         pass
 
     def after_init(self):
@@ -85,10 +90,9 @@ class DAO(object):
                         kwargs[f] = None
 
     def _jsonify(self, kwargs):
-        if 'id' in kwargs:
-            for f in self.JSON_FIELDS:
-                if kwargs[f]:
-                    kwargs[f] = json.loads(kwargs[f])
+        for f in self.JSON_FIELDS:
+            if kwargs[f]:
+                kwargs[f] = json.loads(kwargs[f])
 
     def __getattr__(self, name):
         ''' see if name refers to some other table added during query.join operation '''
