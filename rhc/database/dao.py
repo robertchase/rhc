@@ -43,7 +43,7 @@ class DAO(object):
         self._normalize(kwargs)
         self.on_init(kwargs)
         if 'id' in kwargs:
-            self.on_load()
+            self.on_load(kwargs)
             self._jsonify(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
