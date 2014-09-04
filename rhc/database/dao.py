@@ -131,6 +131,8 @@ class DAO(object):
             cache[n] = getattr(self, n)
             setattr(self, n, json.dumps(self.on_json_save(n, getattr(self, n))))
         self.before_save()
+        if not hasattr(self, 'id'):
+            self.before_insert()
         fields = [f for f in self.FIELDS if f != 'id']
         args = [self.__dict__[f] for f in fields]
         if not hasattr(self, 'id'):
@@ -155,6 +157,9 @@ class DAO(object):
         return obj
 
     def before_save(self):
+        pass
+
+    def before_insert(self):
         pass
 
     def after_save(self):
