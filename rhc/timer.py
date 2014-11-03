@@ -22,7 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 import time
-from singleton import Singleton
 '''
   The python library threading.Timer provides a timer which runs in a separate
   thread. These classes provide a same-thread timer function which is
@@ -68,7 +67,7 @@ class Timer (object):
 
     def expire(self):
         if self.is_running:
-            self.__expire = time.time() - 1
+            self.__expire = time.time() - 5
 
     def delete(self):
         self.is_running = False
@@ -107,9 +106,9 @@ class BackoffTimer (Timer):
         Timer.re_start(self)
 
 
-class Timers (Singleton):
+class Timers(object):
 
-    def singleton(self):
+    def __init__(self):
         self.__timers = []
 
     def service(self):
@@ -138,3 +137,5 @@ class Timers (Singleton):
         timer = BackoffTimer(action, initial, maximum, multiplier)
         self.__timers.append(timer)
         return timer
+
+TIMERS = Timers()
