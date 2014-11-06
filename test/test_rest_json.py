@@ -13,6 +13,11 @@ def test2(handler, a):
     return a
 
 
+@content_to_json(('a', int), 'b')
+def test3(handler, a, b):
+    return a + 1, b
+
+
 class Handler(object):
     pass
 
@@ -37,6 +42,13 @@ class RESTJsonTest(unittest.TestCase):
         self.assertEqual(r.code, 400)
         r = test2(h)
         self.assertEqual(r.code, 400)
+
+    def test_json_type(self):
+        h = Handler()
+        h.http_content = json.dumps(dict(a='1', b='2'))
+        a, b = test3(h)
+        self.assertEqual(a, 2)
+        self.assertEqual(b, '2')
 
 if __name__ == '__main__':
     unittest.main()

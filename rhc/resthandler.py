@@ -248,6 +248,12 @@ def content_to_json(*fields):
                  appended, in order, to the rest_handler's argument list. The
                  specified fields must be present in the content.
 
+                 if a field name is a tuple, then the first element is the name,
+                 which is treated as stated above, and the second element is
+                 a type conversion function which accepts the value and returns
+                 a new value. for instance ('a', int) will look up the value
+                 for 'a', and convert it to an int (or fail trying).
+
     Errors:
         400 - json conversion fails or specified fields not present in json
     '''
@@ -260,7 +266,12 @@ def content_to_json(*fields):
                     request.json = {n: v for n, v in urlparse.parse_qsl(request.http_content)}
                 if fields:
                     args = list(args)
-                    args.extend(request.json[n] for n in fields)
+                    for field in fields:
+                        fname, ftype = field if isinstance(field, tuple) else (field, None)
+                        value = request.json[fname]
+                        if ftype:
+                            value = ftype(value)
+                        args.append(value)
             except Exception as e:
                 return RESTResult(400, e.message)
             return rest_handler(request, *args)
