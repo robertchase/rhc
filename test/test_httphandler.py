@@ -40,7 +40,7 @@ class HTTPHandlerTest(unittest.TestCase):
     def test_status_no_http(self):
         self.handler.on_data('HTTQ/1.1 HI THERE\r\n')
         self.assertTrue(self.handler.closed)
-        self.assertEqual(self.handler.error, 'Invalid status line: not HTTP/1.1')
+        self.assertEqual(self.handler.error, 'Invalid status line: not HTTP/1.0 or HTTP/1.1')
 
     def test_status_code_invalid(self):
         self.handler.on_data('HTTP/1.1 HI THERE\r\n')
