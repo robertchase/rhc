@@ -23,7 +23,6 @@ THE SOFTWARE.
 '''
 import pymysql
 import threading
-from threading import current_thread
 
 
 class _DB(object):
