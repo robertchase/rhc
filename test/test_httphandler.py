@@ -1,5 +1,6 @@
 import unittest
 from rhc.httphandler import HTTPHandler
+from rhc.resthandler import RESTRequest
 
 
 class MyHandler(HTTPHandler):
@@ -8,14 +9,7 @@ class MyHandler(HTTPHandler):
         super(MyHandler, self).__init__(socket, content)
 
     def on_http_data(self):
-        self.saved_http_method = self.http_method
-        self.saved_http_resource = self.http_resource
-        self.saved_http_query = self.http_query
-        self.saved_http_query_string = self.http_query_string
-        self.saved_http_headers = self.http_headers
-        self.saved_http_content = self.http_content
-        self.saved_http_content = self.http_content
-        self.saved_http_multipart = self.http_multipart
+        self.request = RESTRequest(self)  # use RESTRequest to cache result
 
 
 class HTTPHandlerTest(unittest.TestCase):
@@ -114,22 +108,22 @@ class HTTPHandlerTest(unittest.TestCase):
         self.handler.on_data('5\r\nabcde\r\n3\r\n123\r\n0\r\n')
         self.handler.on_data('footer:test\r\n\r\n')
         self.assertFalse(self.handler.closed)
-        self.assertEqual(self.handler.saved_http_content, 'abcde123')
-        self.assertEqual(self.handler.saved_http_headers['footer'], 'test')
+        self.assertEqual(self.handler.request.http_content, 'abcde123')
+        self.assertEqual(self.handler.request.http_headers['footer'], 'test')
 
     def test_header_valid_server(self):
         self.handler.on_data('YO /this/is/a/test HTTP/1.1\r\nHost:whatever\nContent-Length:0\r\n\r\n')
         self.assertFalse(self.handler.closed)
-        self.assertTrue(self.handler.saved_http_method, 'YO')
-        self.assertTrue(self.handler.saved_http_resource, '/this/is/a/test')
+        self.assertTrue(self.handler.request.http_method, 'YO')
+        self.assertTrue(self.handler.request.http_resource, '/this/is/a/test')
 
     def test_query_string(self):
         self.handler.on_data('YO /this/is/a/test?name=value&othername=othervalue HTTP/1.1\r\nHost:whatever\nContent-Length:0\r\n\r\n')
         self.assertFalse(self.handler.closed)
-        self.assertEqual(self.handler.saved_http_resource, '/this/is/a/test')
-        self.assertEqual(self.handler.saved_http_query['name'], 'value')
-        self.assertEqual(self.handler.saved_http_query['othername'], 'othervalue')
-        self.assertEqual(self.handler.saved_http_query_string, 'name=value&othername=othervalue')
+        self.assertEqual(self.handler.request.http_resource, '/this/is/a/test')
+        self.assertEqual(self.handler.request.http_query['name'], 'value')
+        self.assertEqual(self.handler.request.http_query['othername'], 'othervalue')
+        self.assertEqual(self.handler.request.http_query_string, 'name=value&othername=othervalue')
 
     def test_multipart(self):
         data = '''POST /upload HTTP/1.1\r
@@ -158,9 +152,9 @@ for record in data['feedback']['record']:
 '''
         self.handler.on_data(data)
         self.assertFalse(self.handler.closed)
-        self.assertEqual(self.handler.saved_http_multipart[0].disposition['name'], '"foo"')
-        self.assertEqual(self.handler.saved_http_multipart[0].content, 'whatever\r\n')
-        self.assertEqual(self.handler.saved_http_multipart[1].disposition['filename'], '"tmp.py"')
+        self.assertEqual(self.handler.request.http_multipart[0].disposition['name'], '"foo"')
+        self.assertEqual(self.handler.request.http_multipart[0].content, 'whatever\r\n')
+        self.assertEqual(self.handler.request.http_multipart[1].disposition['filename'], '"tmp.py"')
 
 if __name__ == '__main__':
     unittest.main()
