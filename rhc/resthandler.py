@@ -105,6 +105,7 @@ class RESTHandler(HTTPHandler):
                 if result:
                     self.rest_response(result)
                 else:
+                    # rest_response() will be called later; remove Connection:close to keep connection around
                     if 'Connection' in self.http_headers:
                         del self.http_headers['Connection']
             except Exception:
