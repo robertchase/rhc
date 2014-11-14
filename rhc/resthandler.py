@@ -122,6 +122,8 @@ class RESTHandler(HTTPHandler):
         pass
 
     def rest_response(self, result):
+        if not isinstance(result, RESTResult):
+            result = RESTResult(content=result)
         self._rest_send(result.content, result.code, result.message, result.headers)
 
     def on_rest_exception(self, exception_type, exception_value, exception_traceback):
