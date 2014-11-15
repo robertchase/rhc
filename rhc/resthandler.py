@@ -76,6 +76,11 @@ class RESTResult(object):
         self.headers = headers
 
 
+class RESTDelay(object):
+    ''' Indicate delayed response: see RESTHandler '''
+    pass
+
+
 class RESTHandler(HTTPHandler):
     '''
         Identify and execute REST handler functions.
@@ -87,7 +92,7 @@ class RESTHandler(HTTPHandler):
 
         A rest_handler function returns a RESTResult object when an immediate
         response is available. In order to delay a response (to prevent
-        blocking the server) a rest_handler can return a None, followed by a
+        blocking the server) a rest_handler can return a RESTDelay, followed by a
         future call to rest_response.
 
         Callback methods:
@@ -103,12 +108,12 @@ class RESTHandler(HTTPHandler):
                 request = RESTRequest(self)
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
-                if result is not None:
-                    self.rest_response(result)
-                else:
+                if isinstance(result, RESTDelay):
                     # rest_response() will be called later; remove Connection:close to keep connection around
                     if 'Connection' in self.http_headers:
                         del self.http_headers['Connection']
+                else:
+                    self.rest_response(result)
             except Exception:
                 content = self.on_rest_exception(*sys.exc_info())
                 kwargs = dict(code=501, message='Internal Server Error')
