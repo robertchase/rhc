@@ -34,6 +34,7 @@ class RESTRequest(object):
 
     def __init__(self, handler):
         self.handler = handler
+        self.context = handler.context.context
         self.http_message = handler.http_message
         self.http_headers = handler.http_headers
         self.http_content = handler.http_content
@@ -102,7 +103,7 @@ class RESTHandler(HTTPHandler):
                 request = RESTRequest(self)
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
-                if result:
+                if result is not None:
                     self.rest_response(result)
                 else:
                     # rest_response() will be called later; remove Connection:close to keep connection around
@@ -159,12 +160,18 @@ class RESTMapper(object):
         A URI-to-executable mapper that is passed as the context for a
         RESTHandler.
 
+        If a context is specified, it is included in each request as
+        request.context. If the requests are handled in separate threads
+        it is important to serialize access to this variable since it
+        is shared.
+
         The on_http_data method of the RESTHandler calls the _match method
         on this object to resolve a URI to a previously defined pattern.
         Patterns are added with the add method.
     '''
 
-    def __init__(self):
+    def __init__(self, context=None):
+        self.context = context
         self.__mapping = []
         self.map()
 
