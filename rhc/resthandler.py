@@ -34,7 +34,7 @@ class RESTRequest(object):
 
     def __init__(self, handler):
         self.handler = handler
-        self.context = handler.context.context
+        self.context = handler.context.context  # context from RESTMapper
         self.http_message = handler.http_message
         self.http_headers = handler.http_headers
         self.http_content = handler.http_content

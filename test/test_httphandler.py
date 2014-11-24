@@ -5,8 +5,8 @@ from rhc.resthandler import RESTRequest
 
 class MyHandler(HTTPHandler):
 
-    def __init__(self, socket, content=None):
-        super(MyHandler, self).__init__(socket, content)
+    def __init__(self, socket):
+        super(MyHandler, self).__init__(socket, context=type('MyContext', (object,), dict(context=None)))
 
     def on_http_data(self):
         self.request = RESTRequest(self)  # use RESTRequest to cache result
