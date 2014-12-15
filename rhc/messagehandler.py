@@ -48,8 +48,9 @@ class MessageHandler (object):
 
       Parameters:
 
-        filename   - a message file, or list of message files, formatted to
-                     be read by the loadfile function (see below)
+        file       - a message file, or list of message files, formatted to
+                     be read by the loadfile function (see below). a file can
+                     be a filename (string) or a file-like object.
         display_fn - an object specifying display functions (see MessageDisplay
                      below)
         verbose    - True if verbose messages are to be displayed
@@ -60,7 +61,7 @@ class MessageHandler (object):
         self.verbose = verbose
         self.stdout = stdout
         self.__messages = {}
-        if not isinstance(filename, list):
+        if not isinstance(filename, (tuple, list)):
             filename = [filename]
         for f in filename:
             self.__messages = loadfile(f, self.__messages)
@@ -161,7 +162,7 @@ def _parse_line(line, message, msgset):
 def loadfile(filename, msgset=None):
     '''
       Generate a dictionary of Message objects indexed by message.id, from a
-      file.
+      filename or file-like object.
 
       The file contains the following records for each message:
 
@@ -198,7 +199,9 @@ def loadfile(filename, msgset=None):
     msgset = msgset if msgset else {}
     message = None
 
-    for lineno, line in enumerate(open(filename), start=1):
+    if isinstance(filename, str):
+        filename = open(filename)
+    for lineno, line in enumerate(filename, start=1):
 
         line = line.split('#', 1)[0].strip()
         if len(line) == 0:
@@ -243,5 +246,15 @@ class MessageDisplay (object):
         self.stdout(msg)
 
 if '__main__' == __name__:
-    h = MessageHandler('MessageHandler.msg', MessageDisplay())
+    from StringIO import StringIO
+
+    f = StringIO('''
+        MESSAGE 100
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT pid=%d, cid=%d: open %s
+        TEXT  and then some...
+    ''')
+
+    h = MessageHandler(f, MessageDisplay())
     h.logmsg(100, (1, 10, 'yepper'))
