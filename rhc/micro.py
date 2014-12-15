@@ -1,5 +1,6 @@
 from importlib import import_module
 import sys
+import traceback
 
 from rhc.tcpsocket import Server
 from rhc.resthandler import RESTMapper, RESTHandler
@@ -49,6 +50,24 @@ def _load(f):
 
     return result
 
+
+class MicroRESTHandler(RESTHandler):
+
+    def on_open(self):
+        print 'open:', self.full_address()
+
+    def on_close(self):
+        print 'close:', self.full_address()
+
+    def on_rest_data(self, request, *groups):
+        print 'rest:', self.http_method, self.http_resource, groups
+
+    def on_rest_exception(self, exception_type, value, trace):
+        data = traceback.format_exe(trace)
+        print data
+        return data
+
+
 if __name__ == '__main__':
 
     f = sys.stdin if len(sys.argv) < 2 else open(sys.argv[1])
@@ -58,7 +77,7 @@ if __name__ == '__main__':
     for pattern, kwargs in config['routes']:
         m.add(pattern, **kwargs)
 
-    SERVER.add_server(config['port'], RESTHandler, m)
+    SERVER.add_server(config['port'], MicroRESTHandler, m)
     try:
         while True:
             SERVER.service(.1)
