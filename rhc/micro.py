@@ -2,6 +2,7 @@ from importlib import import_module
 import sys
 import traceback
 
+from rhc.log import logmsg
 from rhc.tcpsocket import Server
 from rhc.resthandler import RESTMapper, RESTHandler
 
@@ -54,10 +55,10 @@ def _load(f):
 class MicroRESTHandler(RESTHandler):
 
     def on_open(self):
-        print 'open:', self.full_address()
+        logmsg(102, self.on_full_address())
 
     def on_close(self):
-        print 'close:', self.full_address()
+        logmsg(103, self.on_full_address())
 
     def on_rest_data(self, request, *groups):
         print 'rest:', self.http_method, self.http_resource, groups
@@ -69,6 +70,36 @@ class MicroRESTHandler(RESTHandler):
 
 
 if __name__ == '__main__':
+    from StringIO import StringIO
+    from rhc.log import LOG
+
+    LOG.setup(StringIO('''
+        MESSAGE 100
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT Server listening on port %s
+
+        MESSAGE 101
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT Received shutdown command from keyboard
+
+        MESSAGE 102
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT open: %s
+
+        MESSAGE 103
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT close: %s
+
+        MESSAGE 104
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT request method=%s, resource=%s, query=%s, groups=%s
+
+    '''))
 
     f = sys.stdin if len(sys.argv) < 2 else open(sys.argv[1])
     config = _load(f)
