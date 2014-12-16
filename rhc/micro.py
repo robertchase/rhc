@@ -41,7 +41,6 @@ def _load(f):
             kwargs[rectyp.lower()] = _import(recval)
         elif rectyp == 'CONTEXT':
             kwargs = None
-            # result['context'] = type('context', (object,), _import(recval)())()  # import recval, evaluate as function returning dict, wrap in object
             result['context'] = _import(recval)()
         elif rectyp == 'PORT':
             kwargs = None
@@ -54,17 +53,22 @@ def _load(f):
 
 class MicroRESTHandler(RESTHandler):
 
+    NEXT_ID = 0
+    NEXT_REQUEST_ID = 0
+
     def on_open(self):
-        logmsg(102, self.full_address())
+        self.id = MicroRESTHandler.NEXT_ID = MicroRESTHandler.NEXT_ID + 1
+        logmsg(102, self.id, self.full_address())
 
     def on_close(self):
-        logmsg(103, self.full_address())
+        logmsg(103, self.id, self.full_address())
 
     def on_rest_data(self, request, *groups):
-        logmsg(104, request.http_method, request.http_resource, request.http_query_string, groups)
+        request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
+        logmsg(104, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
 
     def on_rest_exception(self, exception_type, value, trace):
-        data = traceback.format_exe(trace)
+        data = traceback.format_exc(trace)
         logmsg(105, data)
         return data
 
@@ -87,17 +91,17 @@ if __name__ == '__main__':
         MESSAGE 102
         LOG     INFO
         DISPLAY ALWAYS
-        TEXT open: %s
+        TEXT open: cid=%d, %s
 
         MESSAGE 103
         LOG     INFO
         DISPLAY ALWAYS
-        TEXT close: %s
+        TEXT close: cid=%d, %s
 
         MESSAGE 104
         LOG     INFO
         DISPLAY ALWAYS
-        TEXT request method=%s, resource=%s, query=%s, groups=%s
+        TEXT request cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s
 
         MESSAGE 105
         LOG     WARNING
@@ -114,6 +118,7 @@ if __name__ == '__main__':
         m.add(pattern, **kwargs)
 
     SERVER.add_server(config['port'], MicroRESTHandler, m)
+    logmsg(100, config['port'])
     try:
         while True:
             SERVER.service(.1)
