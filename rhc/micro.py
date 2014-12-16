@@ -55,17 +55,17 @@ def _load(f):
 class MicroRESTHandler(RESTHandler):
 
     def on_open(self):
-        logmsg(102, self.on_full_address())
+        logmsg(102, self.full_address())
 
     def on_close(self):
-        logmsg(103, self.on_full_address())
+        logmsg(103, self.full_address())
 
     def on_rest_data(self, request, *groups):
-        print 'rest:', self.http_method, self.http_resource, groups
+        logmsg(104, request.http_method, request.http_resource, request.http_query_string, groups)
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exe(trace)
-        print data
+        logmsg(105, data)
         return data
 
 
@@ -99,7 +99,12 @@ if __name__ == '__main__':
         DISPLAY ALWAYS
         TEXT request method=%s, resource=%s, query=%s, groups=%s
 
-    '''))
+        MESSAGE 105
+        LOG     WARNING
+        DISPLAY ALWAYS
+        TEXT exception encountered: %s
+
+    '''), stdout=True)
 
     f = sys.stdin if len(sys.argv) < 2 else open(sys.argv[1])
     config = _load(f)
