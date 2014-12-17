@@ -44,6 +44,15 @@ class RESTRequest(object):
         self.http_query_string = handler.http_query_string
         self.http_query = handler.http_query
 
+    @property
+    def json(self):
+        if '_json' not in self.__dict__:
+            if self.http_content and self.http_content.lstrip()[0] in '[{':
+                self._json = json.loads(self.http_content)
+            else:
+                self._json = {n: v for n, v in urlparse.parse_qsl(self.http_content)}
+        return self._json
+
 
 class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
@@ -275,10 +284,6 @@ def content_to_json(*fields):
     def __content_to_json(rest_handler):
         def inner(request, *args):
             try:
-                if request.http_content and request.http_content.lstrip()[0] in '[{':
-                    request.json = json.loads(request.http_content)
-                else:
-                    request.json = {n: v for n, v in urlparse.parse_qsl(request.http_content)}
                 if fields:
                     args = list(args)
                     for field in fields:
@@ -287,6 +292,8 @@ def content_to_json(*fields):
                         if ftype:
                             value = ftype(value)
                         args.append(value)
+            except KeyError as e:
+                return RESTResult(400, 'Missing required key: %s' % str(e))
             except Exception as e:
                 return RESTResult(400, e.message)
             return rest_handler(request, *args)
