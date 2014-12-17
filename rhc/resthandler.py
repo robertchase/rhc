@@ -48,7 +48,10 @@ class RESTRequest(object):
     def json(self):
         if '_json' not in self.__dict__:
             if self.http_content and self.http_content.lstrip()[0] in '[{':
-                self._json = json.loads(self.http_content)
+                try:
+                    self._json = json.loads(self.http_content)
+                except Exception:
+                    raise Exception('Unable to parse json content')
             else:
                 self._json = {n: v for n, v in urlparse.parse_qsl(self.http_content)}
         return self._json
