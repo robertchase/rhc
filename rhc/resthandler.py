@@ -61,7 +61,7 @@ class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
         self.code = code
 
-        if type(content) in (types.DictType, types.ListType):
+        if type(content) in (types.DictType, types.ListType, types.IntType, types.FloatType, types.BooleanType):
             try:
                 content = json.dumps(content)
                 content_type = 'application/json'
