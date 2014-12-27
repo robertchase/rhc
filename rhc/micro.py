@@ -39,6 +39,8 @@ def _load(f):
             if kwargs is None:
                 raise Exception("Line %d contains a %s that doesn't belong to a ROUTE" % (lnum, rectyp))
             kwargs[rectyp.lower()] = _import(recval)
+        elif rectyp == 'INIT':
+            _import(recval)()
         elif rectyp == 'CONTEXT':
             kwargs = None
             result['context'] = _import(recval)()
