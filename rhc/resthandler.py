@@ -46,7 +46,7 @@ class RESTRequest(object):
 
     @property
     def json(self):
-        if '_json' not in self.__dict__:
+        if not hasattr(self, '_json'):
             if self.http_content and self.http_content.lstrip()[0] in '[{':
                 try:
                     self._json = json.loads(self.http_content)
@@ -59,9 +59,14 @@ class RESTRequest(object):
 
 class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
+
+        if isinstance(content, int):
+            code, content = content, ''
+        elif isinstance(content, tuple) and len(content) == 2:
+            code, content = content
         self.code = code
 
-        if type(content) in (types.DictType, types.ListType, types.IntType, types.FloatType, types.BooleanType):
+        if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
             try:
                 content = json.dumps(content)
                 content_type = 'application/json'
