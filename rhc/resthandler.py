@@ -138,10 +138,14 @@ class RESTHandler(HTTPHandler):
                     kwargs['content'] = str(content)
                 self._rest_send(**kwargs)
         else:
+            self.on_rest_no_match()
             self._rest_send(code=404, message='Not Found')
 
     def on_rest_data(self, request, *groups):
         ''' called on rest_handler match '''
+        pass
+
+    def on_rest_no_match(self, request):
         pass
 
     def rest_response(self, result):
