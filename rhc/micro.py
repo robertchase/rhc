@@ -1,5 +1,4 @@
 from importlib import import_module
-import sys
 import traceback
 
 from rhc.log import logmsg
@@ -68,6 +67,15 @@ class MicroRESTHandler(RESTHandler):
     def on_rest_data(self, request, *groups):
         request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
         logmsg(104, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
+        logmsg(106, self.id, request.id, request.http_headers)
+        logmsg(107, self.id, request.id, request.http_content[:100] if request.http_content else '')
+
+    def on_rest_send(self, code, message, content, headers):
+        logmsg(108, self.id, code, message, headers)
+        logmsg(109, self.id, content[:100] if content else '')
+
+    def on_rest_no_match(self):
+        logmsg(110, self.id, self.http_method, self.http_resource)
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exc(trace)
@@ -76,10 +84,19 @@ class MicroRESTHandler(RESTHandler):
 
 
 if __name__ == '__main__':
+    import argparse
     from StringIO import StringIO
     from rhc.log import LOG
 
-    LOG.setup(StringIO('''
+    parser = argparse.ArgumentParser()
+    parser.add_argument('control_file', type=open)
+    parser.add_argument('-m', '--messagefile')
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    args = parser.parse_args()
+
+    config = _load(args.control_file)
+
+    messages = StringIO('''
         MESSAGE 100
         LOG     INFO
         DISPLAY ALWAYS
@@ -110,10 +127,35 @@ if __name__ == '__main__':
         DISPLAY ALWAYS
         TEXT exception encountered: %s
 
-    '''), stdout=True)
+        MESSAGE 106
+        LOG     DEBUG
+        DISPLAY VERBOSE
+        TEXT request cid=%d, rid=%d, headers=%s
 
-    f = sys.stdin if len(sys.argv) < 2 else open(sys.argv[1])
-    config = _load(f)
+        MESSAGE 107
+        LOG     DEBUG
+        DISPLAY VERBOSE
+        TEXT request cid=%d, rid=%d, content=%s
+
+        MESSAGE 108
+        LOG     DEBUG
+        DISPLAY VERBOSE
+        TEXT response cid=%d, code=%d, message=%s, headers=%s
+
+        MESSAGE 109
+        LOG     DEBUG
+        DISPLAY VERBOSE
+        TEXT response cid=%d, content=%s
+
+        MESSAGE 110
+        LOG     WARNING
+        DISPLAY ALWAYS
+        TEXT no match cid=%d, method=%s, resource=%s
+
+    ''')
+    if args.messagefile:
+        messages = (messages, args.messagefile)
+    LOG.setup(messages, stdout=True, verbose=args.verbose)
 
     m = RESTMapper(context=config['context'])
     for pattern, kwargs in config['routes']:
