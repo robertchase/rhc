@@ -145,7 +145,7 @@ class RESTHandler(HTTPHandler):
         ''' called on rest_handler match '''
         pass
 
-    def on_rest_no_match(self, request):
+    def on_rest_no_match(self):
         pass
 
     def rest_response(self, result):
