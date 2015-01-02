@@ -72,7 +72,7 @@ class MicroRESTHandler(RESTHandler):
 
     def on_rest_send(self, code, message, content, headers):
         logmsg(108, self.id, code, message, headers)
-        logmsg(109, self.id, content[:100] if content else '')
+        logmsg(109, self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
 
     def on_rest_no_match(self):
         logmsg(110, self.id, self.http_method, self.http_resource)
