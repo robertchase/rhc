@@ -57,7 +57,7 @@ class Log(object):
                 pass
 
     def debug(self, message):
-        self.__log(syslog.LOG_DEBUG, message)
+        self.__log(syslog.LOG_DEBUG, message, '<G>')
 
     def info(self, message):
         self.__log(syslog.LOG_INFO, message, '<I>')
