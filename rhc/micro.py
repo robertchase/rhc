@@ -21,6 +21,7 @@ def _load(f):
         routes=[],
         context=None,
         port=None,
+        name='MICRO',
     )
 
     kwargs = None
@@ -40,12 +41,14 @@ def _load(f):
             kwargs[rectyp.lower()] = _import(recval)
         elif rectyp == 'INIT':
             _import(recval)()
+        elif rectyp == 'NAME':
+            result['name'] = _import(recval)()
         elif rectyp == 'CONTEXT':
             kwargs = None
             result['context'] = _import(recval)()
         elif rectyp == 'PORT':
             kwargs = None
-            result['port'] = int(recval)
+            result['port'] = _import(recval)()
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
 
@@ -91,6 +94,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('control_file', type=open)
     parser.add_argument('-m', '--messagefile')
+    parser.add_argument('-s', '--stdout', action='store_true', default=False)
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     args = parser.parse_args()
 
@@ -152,10 +156,15 @@ if __name__ == '__main__':
         DISPLAY ALWAYS
         TEXT no match cid=%d, method=%s, resource=%s
 
+        MESSAGE 9911
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT received shutdown command from keyboard
+
     ''')
     if args.messagefile:
         messages = (messages, args.messagefile)
-    LOG.setup(messages, stdout=True, verbose=args.verbose)
+    LOG.setup(messages, name=config['name'], stdout=args.stdout, verbose=args.verbose)
 
     m = RESTMapper(context=config['context'])
     for pattern, kwargs in config['routes']:
@@ -167,4 +176,4 @@ if __name__ == '__main__':
         while True:
             SERVER.service(.1)
     except KeyboardInterrupt:
-        print 'done'
+        logmsg(9911)
