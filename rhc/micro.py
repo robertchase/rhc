@@ -62,27 +62,27 @@ class MicroRESTHandler(RESTHandler):
 
     def on_open(self):
         self.id = MicroRESTHandler.NEXT_ID = MicroRESTHandler.NEXT_ID + 1
-        logmsg(9902, self.id, self.full_address())
+        logmsg(902, self.id, self.full_address())
 
     def on_close(self):
-        logmsg(9903, self.id, self.full_address())
+        logmsg(903, self.id, self.full_address())
 
     def on_rest_data(self, request, *groups):
         request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
-        logmsg(9904, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
-        logmsg(9906, self.id, request.id, request.http_headers)
-        logmsg(9907, self.id, request.id, request.http_content[:100] if request.http_content else '')
+        logmsg(904, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
+        logmsg(906, self.id, request.id, request.http_headers)
+        logmsg(907, self.id, request.id, request.http_content[:100] if request.http_content else '')
 
     def on_rest_send(self, code, message, content, headers):
-        logmsg(9908, self.id, code, message, headers)
-        logmsg(9909, self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
+        logmsg(908, self.id, code, message, headers)
+        logmsg(909, self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
 
     def on_rest_no_match(self):
-        logmsg(9910, self.id, self.http_method, self.http_resource)
+        logmsg(910, self.id, self.http_method, self.http_resource)
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exc(trace)
-        logmsg(9905, data)
+        logmsg(905, data)
         return data
 
 
@@ -101,65 +101,60 @@ if __name__ == '__main__':
     config = _load(args.control_file)
 
     messages = StringIO('''
-        MESSAGE 9900
+        MESSAGE 900
         LOG     INFO
         DISPLAY ALWAYS
         TEXT Server listening on port %s
 
-        MESSAGE 9901
+        MESSAGE 901
         LOG     INFO
         DISPLAY ALWAYS
         TEXT Received shutdown command from keyboard
 
-        MESSAGE 9902
+        MESSAGE 902
         LOG     INFO
         DISPLAY ALWAYS
         TEXT open: cid=%d, %s
 
-        MESSAGE 9903
+        MESSAGE 903
         LOG     INFO
         DISPLAY ALWAYS
         TEXT close: cid=%d, %s
 
-        MESSAGE 9904
+        MESSAGE 904
         LOG     INFO
         DISPLAY ALWAYS
         TEXT request cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s
 
-        MESSAGE 9905
+        MESSAGE 905
         LOG     WARNING
         DISPLAY ALWAYS
         TEXT exception encountered: %s
 
-        MESSAGE 9906
+        MESSAGE 906
         LOG     DEBUG
         DISPLAY VERBOSE
         TEXT request cid=%d, rid=%d, headers=%s
 
-        MESSAGE 9907
+        MESSAGE 907
         LOG     DEBUG
         DISPLAY VERBOSE
         TEXT request cid=%d, rid=%d, content=%s
 
-        MESSAGE 9908
+        MESSAGE 908
         LOG     DEBUG
         DISPLAY VERBOSE
         TEXT response cid=%d, code=%d, message=%s, headers=%s
 
-        MESSAGE 9909
+        MESSAGE 909
         LOG     DEBUG
         DISPLAY VERBOSE
         TEXT response cid=%d, content=%s
 
-        MESSAGE 9910
+        MESSAGE 910
         LOG     WARNING
         DISPLAY ALWAYS
         TEXT no match cid=%d, method=%s, resource=%s
-
-        MESSAGE 9911
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT received shutdown command from keyboard
 
     ''')
     if args.messagefile:
@@ -171,9 +166,9 @@ if __name__ == '__main__':
         m.add(pattern, **kwargs)
 
     SERVER.add_server(config['port'], MicroRESTHandler, m)
-    logmsg(9900, config['port'])
+    logmsg(900, config['port'])
     try:
         while True:
             SERVER.service(.1)
     except KeyboardInterrupt:
-        logmsg(9911)
+        logmsg(901)
