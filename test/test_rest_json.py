@@ -1,6 +1,6 @@
 import json
 import unittest
-from rhc.resthandler import content_to_json
+from rhc.resthandler import RESTRequest, content_to_json
 
 
 @content_to_json()
@@ -18,8 +18,9 @@ def test3(handler, a, b):
     return a + 1, b
 
 
-class Handler(object):
-    pass
+class Handler(RESTRequest):
+    def __init__(self):
+        self.http_content = ''
 
 
 class RESTJsonTest(unittest.TestCase):
@@ -38,8 +39,6 @@ class RESTJsonTest(unittest.TestCase):
 
     def test_json_bad(self):
         h = Handler()
-        r = test1(h)
-        self.assertEqual(r.code, 400)
         r = test2(h)
         self.assertEqual(r.code, 400)
 
