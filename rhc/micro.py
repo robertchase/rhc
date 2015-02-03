@@ -4,6 +4,7 @@ import traceback
 from rhc.log import logmsg
 from rhc.tcpsocket import Server
 from rhc.resthandler import RESTMapper, RESTHandler
+from rhc.timer import TIMERS
 
 
 SERVER = Server()
@@ -170,5 +171,6 @@ if __name__ == '__main__':
     try:
         while True:
             SERVER.service(.1)
+            TIMERS.service()
     except KeyboardInterrupt:
         logmsg(901)
