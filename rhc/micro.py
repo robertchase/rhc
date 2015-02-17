@@ -2,12 +2,9 @@ from importlib import import_module
 import traceback
 
 from rhc.log import logmsg
-from rhc.tcpsocket import Server
+from rhc.tcpsocket import SERVER
 from rhc.resthandler import RESTMapper, RESTHandler
 from rhc.timer import TIMERS
-
-
-SERVER = Server()
 
 
 def _import(item_path):
