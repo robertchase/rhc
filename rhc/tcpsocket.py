@@ -21,8 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
-from singleton import Singleton
-
 import errno
 import select
 import socket
@@ -96,7 +94,7 @@ class Client(object):
         return ret
 
 
-class Server (Singleton):
+class Server (object):
 
     '''
       Async TCP socket handling for both inbound and outbound connections.
@@ -111,7 +109,7 @@ class Server (Singleton):
       context shared for every socket on a listener, and one unshared context
       for each outbound connection.
     '''
-    def singleton(self):
+    def __init__(self):
         self.__readable = []
         self.__writeable = []
         self.__handshake = []
@@ -258,6 +256,9 @@ class Server (Singleton):
                 if iterations == max_iterations:
                     break
         return did_anything
+
+
+SERVER = Server()
 
 
 class SSLParam (object):
