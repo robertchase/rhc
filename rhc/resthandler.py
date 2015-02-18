@@ -44,6 +44,9 @@ class RESTRequest(object):
         self.http_query_string = handler.http_query_string
         self.http_query = handler.http_query
 
+    def respond(self, result):
+        self.handler.rest_response(result)
+
     @property
     def json(self):
         if not hasattr(self, '_json'):
