@@ -48,7 +48,10 @@ class RESTRequest(object):
         self.is_delay = False
 
     def respond(self, result):
-        self.handler.rest_response(result)
+        if self.is_delay:
+            self.handler.rest_response(result)
+        else:
+            return result
 
     @property
     def json(self):
@@ -116,7 +119,8 @@ class RESTHandler(HTTPHandler):
         A rest_handler function returns a RESTResult object when an immediate
         response is available. In order to delay a response (to prevent
         blocking the server) a rest_handler can return a RESTDelay, followed by a
-        future call to rest_response.
+        future call to rest_response. A RESTDelay will keep the socket open and
+        set the is_delay flag on the RESTRequest.
 
         Callback methods:
             on_rest_data(self, *groups)
@@ -300,9 +304,7 @@ def content_to_json(*fields):
     Errors:
         400 - json conversion fails or specified fields not present in json
     Notes:
-         1. Sensitive to the is_delay flag on the request. If the flag is True,
-            then any RESTResult is sent using the respond method, else, the
-            result is returned.
+         1. This is responsive to the is_delay flag on the request.
     '''
     def __content_to_json(rest_handler):
         def inner(request, *args):
@@ -316,15 +318,9 @@ def content_to_json(*fields):
                             value = ftype(value)
                         args.append(value)
             except KeyError as e:
-                result = RESTResult(400, 'Missing required key: %s' % str(e))
-                if not request.is_delay:
-                    return result
-                request.respond(result)
+                return request.respond((400, 'Missing required key: %s' % str(e)))
             except Exception as e:
-                result = RESTResult(400, e.message)
-                if not request.is_delay:
-                    return result
-                request.respond(result)
+                return request.respond((400, e.message))
             return rest_handler(request, *args)
         return inner
     return __content_to_json
