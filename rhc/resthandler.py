@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import datetime
 import json
 import re
 import sys
@@ -43,6 +44,7 @@ class RESTRequest(object):
         self.http_resource = handler.http_resource
         self.http_query_string = handler.http_query_string
         self.http_query = handler.http_query
+        self.timestamp = datetime.datetime.now()
 
     def respond(self, result):
         self.handler.rest_response(result)
