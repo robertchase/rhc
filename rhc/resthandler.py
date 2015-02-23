@@ -45,6 +45,7 @@ class RESTRequest(object):
         self.http_query_string = handler.http_query_string
         self.http_query = handler.http_query
         self.timestamp = datetime.datetime.now()
+        self.is_delay = False
 
     def respond(self, result):
         self.handler.rest_response(result)
@@ -131,6 +132,7 @@ class RESTHandler(HTTPHandler):
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
                 if isinstance(result, RESTDelay):
+                    request.is_delay = True
                     # rest_response() will be called later; remove Connection:close to keep connection around
                     if 'Connection' in self.http_headers:
                         del self.http_headers['Connection']
@@ -297,6 +299,10 @@ def content_to_json(*fields):
 
     Errors:
         400 - json conversion fails or specified fields not present in json
+    Notes:
+         1. Sensitive to the is_delay flag on the request. If the flag is True,
+            then any RESTResult is sent using the respond method, else, the
+            result is returned.
     '''
     def __content_to_json(rest_handler):
         def inner(request, *args):
@@ -310,9 +316,15 @@ def content_to_json(*fields):
                             value = ftype(value)
                         args.append(value)
             except KeyError as e:
-                return RESTResult(400, 'Missing required key: %s' % str(e))
+                result = RESTResult(400, 'Missing required key: %s' % str(e))
+                if not request.is_delay:
+                    return result
+                request.respond(result)
             except Exception as e:
-                return RESTResult(400, e.message)
+                result = RESTResult(400, e.message)
+                if not request.is_delay:
+                    return result
+                request.respond(result)
             return rest_handler(request, *args)
         return inner
     return __content_to_json
