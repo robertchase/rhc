@@ -290,10 +290,10 @@ def content_to_json(*fields):
     one value per key.
 
     Arguments:
-        fields - an optional list of field names. If specified, the names will
-                 be used to look up values in the json dictionary which are
-                 appended, in order, to the rest_handler's argument list. The
-                 specified fields must be present in the content.
+        fields - a list of field names. the names will be used to look up
+                 values in the json dictionary which are appended, in order,
+                 to the rest_handler's argument list. The specified fields
+                 must be present in the content.
 
                  if a field name is a tuple, then the first element is the name,
                  which is treated as stated above, and the second element is
