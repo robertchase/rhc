@@ -78,7 +78,11 @@ class Query(object):
 
         return self
 
-    def _build(self, arg, one, for_update):
+    def _build(self, arg, one, limit, offset, for_update):
+        if one and limit:
+            raise Exception('one and limit parameters are mutually exclusive')
+        if one:
+            limit = 1
         stmt = 'SELECT '
         stmt += ','.join(self._columns)
         stmt += ' FROM ' + self._join
@@ -86,17 +90,19 @@ class Query(object):
             stmt += ' WHERE ' + self._where
         if self._order:
             stmt += ' ORDER BY ' + self._order
-        if one:
-            stmt += ' LIMIT 1'
+        if limit:
+            stmt += ' LIMIT %d' % limit
+        if offset:
+            stmt += ' OFFSET %d' % offset
         if for_update:
             stmt += ' FOR UPDATE'
         self._stmt = stmt % arg if arg else stmt
         self._executed_stmt = None
         return stmt
 
-    def execute(self, arg=None, one=False, for_update=False, test=False):
+    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, test=False):
 
-        stmt = self._build(arg, one, for_update)
+        stmt = self._build(arg, one, limit, offset, for_update)
         if test:
             result = self._stmt
         else:
