@@ -318,9 +318,9 @@ def content_to_json(*fields):
                             value = ftype(value)
                         args.append(value)
             except KeyError as e:
-                return request.respond((400, 'Missing required key: %s' % str(e)))
+                return request.respond(RESTResult(400, 'Missing required key: %s' % str(e)))
             except Exception as e:
-                return request.respond((400, e.message))
+                return request.respond(RESTResult(400, e.message))
             return rest_handler(request, *args)
         return inner
     return __content_to_json
