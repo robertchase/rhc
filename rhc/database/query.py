@@ -91,9 +91,9 @@ class Query(object):
         if self._order:
             stmt += ' ORDER BY ' + self._order
         if limit:
-            stmt += ' LIMIT %d' % limit
+            stmt += ' LIMIT %d' % int(limit)
         if offset:
-            stmt += ' OFFSET %d' % offset
+            stmt += ' OFFSET %d' % int(offset)
         if for_update:
             stmt += ' FOR UPDATE'
         self._stmt = stmt % arg if arg else stmt
