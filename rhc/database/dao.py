@@ -45,9 +45,14 @@ class DAO(object):
         if 'id' in kwargs:
             self.on_load(kwargs)
             self._jsonify(kwargs)
+        else:
+            self.on_new(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
         self.after_init()
+
+    def on_new(self, kwargs):
+        pass
 
     def on_init(self, kwargs):
         pass
