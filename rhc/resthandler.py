@@ -45,10 +45,13 @@ class RESTRequest(object):
         self.http_query_string = handler.http_query_string
         self.http_query = handler.http_query
         self.timestamp = datetime.datetime.now()
-        self.is_delay = False
+        self.is_delayed = False
+
+    def delay(self):
+        self.is_delayed = True
 
     def respond(self, result):
-        if self.is_delay:
+        if self.is_delayed:
             self.handler.rest_response(result)
         else:
             return result
@@ -118,9 +121,10 @@ class RESTHandler(HTTPHandler):
 
         A rest_handler function returns a RESTResult object when an immediate
         response is available. In order to delay a response (to prevent
-        blocking the server) a rest_handler can return a RESTDelay, followed by a
-        future call to rest_response. A RESTDelay will keep the socket open and
-        set the is_delay flag on the RESTRequest.
+        blocking the server) a rest_handler can call the delay() function on the
+        request object or return a RESTDelay, followed by a future call to
+        rest_response. A RESTDelay will keep the socket open and set the
+        is_delayed flag on the RESTRequest.
 
         Callback methods:
             on_rest_data(self, *groups)
@@ -136,7 +140,8 @@ class RESTHandler(HTTPHandler):
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
                 if isinstance(result, RESTDelay):
-                    request.is_delay = True
+                    request.is_delayed = True
+                if request.is_delayed:
                     # rest_response() will be called later; remove Connection:close to keep connection around
                     if 'Connection' in self.http_headers:
                         del self.http_headers['Connection']
@@ -304,7 +309,7 @@ def content_to_json(*fields):
     Errors:
         400 - json conversion fails or specified fields not present in json
     Notes:
-         1. This is responsive to the is_delay flag on the request.
+         1. This is responsive to the is_delayed flag on the request.
     '''
     def __content_to_json(rest_handler):
         def inner(request, *args):
