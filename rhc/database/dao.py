@@ -39,6 +39,7 @@ class DAO(object):
 
     def __init__(self, **kwargs):
         self._tables = {}
+        self._children = {}
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
@@ -178,6 +179,19 @@ class DAO(object):
     def delete(self):
         with DB as cur:
             cur.execute('DELETE from `%s` where `id`=%%s' % self.TABLE, self.id)
+
+    def children(self, cls):
+        '''
+            return the members of cls with a foreign_key reference to self.
+
+            the query is constructed as 'WHERE <cls.TABLE>.<self.TABLE>_id = <self.id>'
+
+            a lazy cache is maintained (query is done at most one time).
+        '''
+        child = cls.TABLE
+        if child not in self._children:
+            self._children[child] = cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)
+        return self._children[child]
 
     @classmethod
     def load(cls, id):
