@@ -101,16 +101,18 @@ class DAO(object):
                 kwargs[f] = json.loads(kwargs[f])
 
     def __getattr__(self, name):
-        ''' see if name refers to some other table added during query.join operation '''
+        ''' see if name refers to cached parent or children values '''
         if name in self._tables:
-            table = self._tables[name]
+            result = self._tables[name]
+        elif name in self._children:
+            result = self._children[name]
         else:
-            table = self.autoload(name)
-            if table:
-                self.join(table)
+            result = self.autoload(name)
+            if result:
+                self.join(result)
             else:
                 raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
-        return table
+        return result
 
     def __getitem__(self, name):
         ''' allow access to other tables using DAO['other_table'] syntax '''
@@ -192,6 +194,20 @@ class DAO(object):
         if child not in self._children:
             self._children[child] = cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)
         return self._children[child]
+
+    def peer(self, cls):
+        '''
+            return the instance of cls to which self has a foreign_key reference.
+
+            the query is constructed as 'WHERE <cls.TABLE>.id = <self.<cls.TABLE>_id>'
+
+            a lazy cache is maintained (query is done at most one time) using the join method.
+        '''
+        peer = cls.TABLE
+        if peer not in self._tables:
+            peer_id = getattr(self, '%s_id' % peer)
+            self.join(cls.query().where('%s.id = %%s' % peer).execute(peer_id, one=True))
+        return self._tables[peer]
 
     @classmethod
     def load(cls, id):
