@@ -50,6 +50,7 @@ class Timer (object):
             raise Exception('timer is already running')
         self.is_running = True
         self.__expire = time.time() + (self._duration / 1000.0)
+        return self
 
     def re_start(self):
         self.is_running = False
