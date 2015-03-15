@@ -279,7 +279,7 @@ class SSLParam (object):
       be rejected by returning a False.
     '''
     def __init__(self, keyfile=None, certfile=None, server_side=False,
-                 cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_SSLv3, ca_certs=None):
+                 cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLSv1, ca_certs=None):
         self.keyfile = keyfile
         self.certfile = certfile
         self.server_side = server_side
