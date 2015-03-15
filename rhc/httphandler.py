@@ -180,8 +180,8 @@ class HTTPHandler(BasicHandler):
         if len(toks) < 3:
             return self.__error('Invalid status line: too few tokens')
 
-        # HTTP/1.1 200 OK
-        if toks[0] == 'HTTP/1.1':
+        # HTTP/1.[0|1] 200 OK
+        if toks[0] in ('HTTP/1.0', 'HTTP/1.1'):
             try:
                 self.http_status_code = toks[1]
                 self.http_status_code = int(self.http_status_code)
