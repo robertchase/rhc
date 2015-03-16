@@ -163,7 +163,7 @@ class _URLParser(object):
             self.host = u.netloc
             self.port = 443 if self.is_ssl else 80
         self.address = gethostbyname(self.host)
-        self.resource = u.path
+        self.resource = u.path + ('?%s' % u.query if u.query else '')
 
 
 if __name__ == '__main__':
