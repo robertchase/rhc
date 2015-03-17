@@ -29,7 +29,7 @@ from tcpsocket import SERVER, SSLParam
 from timer import TIMERS
 
 
-def request(url, callback, content='', headers=None, method='GET', timeout=5.0):
+def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True):
     ''' make an async http request
 
         When operating a tcpserver.SERVER, use this method to make async HTTP requests that eventually
@@ -37,15 +37,16 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0):
         work unless TIMERS.service is being called with appropriate frequency.
 
         Parameters:
-            url:      resource url
+            url     : resource url
             callback: a type of RequestCallback to which asynchronous results are reported
-            content:  http content to send
-            headers:  dictionary of http headers
-            method:   http method
-            timeout:  max time, in seconds, allowed for request completion
+            content : http content to send
+            headers : dictionary of http headers
+            method  : http method
+            timeout : max time, in seconds, allowed for request completion
+            close   : close socket after request complete, boolean
     '''
     url = _URLParser(url)
-    context = _Context(resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout)
+    context = _Context(resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close)
     ssl = SSLParam() if url.is_ssl else None
     SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
 
@@ -91,7 +92,7 @@ class RequestCallback(object):
 
 class _Context(object):
 
-    def __init__(self, resource, callback, content, headers, method, timeout):
+    def __init__(self, resource, callback, content, headers, method, timeout, close):
         self.done = False
         self.resource = resource
         self.callback = callback
@@ -99,6 +100,7 @@ class _Context(object):
         self.headers = headers
         self.method = method
         self.timeout = timeout
+        self.close = close
 
 
 class _Handler(HTTPHandler):
@@ -142,7 +144,7 @@ class _Handler(HTTPHandler):
     def on_ready(self):
         ctx = self.context
         self.callback.on_ready(self)
-        self.send(method=ctx.method, resource=ctx.resource, headers=ctx.headers, content=ctx.content)
+        self.send(method=ctx.method, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close)
 
     def on_http_data(self):
         self.context.timer.delete()
