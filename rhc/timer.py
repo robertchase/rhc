@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import datetime
 import time
 '''
   The python library threading.Timer provides a timer which runs in a separate
@@ -101,9 +102,30 @@ class BackoffTimer (Timer):
             self._duration *= self.__multiplier
             if self._duration > self.__maximum:
                 self._duration = self.__maximum
+        return self
 
     def re_start(self):
         self._duration = self.__initial
+        Timer.re_start(self)
+
+
+class HourlyTimer(Timer):
+
+    def __init__(self, action):
+        Timer.__init__(self, 0, action)
+
+    @staticmethod
+    def next_hour():
+        now = datetime.datetime.now()
+        next_hour = datetime.datetime(now.year, now.month, now.day, now.hour) + datetime.timedelta(hours=1)
+        return (next_hour - now).total_seconds()
+
+    def start(self):
+        self._duration = self.next_hour() * 1000
+        return Timer.start(self)
+
+    def re_start(self):
+        self._duration = self.next_hour() * 1000
         Timer.re_start(self)
 
 
@@ -136,6 +158,19 @@ class Timers(object):
     def add_backoff(self, action, initial, maximum, multiplier=2):
         ''' see description of BackoffTimer '''
         timer = BackoffTimer(action, initial, maximum, multiplier)
+        self.__timers.append(timer)
+        return timer
+
+    def add_hourly(self, action):
+        '''
+            Run an action once an hour on the hour
+
+            Parameters:
+                action - code to execute when timer expires
+            Return    :
+                unstarted Timer instance
+        '''
+        timer = HourlyTimer(action)
         self.__timers.append(timer)
         return timer
 
