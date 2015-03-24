@@ -143,20 +143,37 @@ class Timers(object):
 
     def add(self, duration, action, onetime=False):
         '''
-          Parameters: duration - time, in ms, that the timer runs
-                      action - code to execute when timer expires
-                      is_onetime - see below
-          Return    : unstarted Timer instance
+            Parameters:
+                duration - time, in ms, that the timer runs
+                action - code to execute when timer expires
+                is_onetime - see below
+            Return    :
+                unstarted Timer instance
 
-          A onetime timer will be purged when it is canceled or expired; otherwise,
-          the timer will remain in the timer list until explicitly deleted.
+            A onetime timer will be purged when it is canceled or expired;
+            otherwise, the timer will remain in the timer list until
+            explicitly deleted.
         '''
         timer = Timer(duration, action, onetime)
         self.__timers.append(timer)
         return timer
 
     def add_backoff(self, action, initial, maximum, multiplier=2):
-        ''' see description of BackoffTimer '''
+        '''
+            Create a timer increases in duration with each start.
+
+            Parameters:
+                action - code to execute when timer expires
+                initial - initial timer duraction, in ms
+                maximum - maximum timer duration
+                multiplier - factor by which duration increases
+                             with each call to the start method.
+            Return    :
+                unstarted Timer instance
+
+            The re_start method will cause the duration to return to
+            the initial value.
+        '''
         timer = BackoffTimer(action, initial, maximum, multiplier)
         self.__timers.append(timer)
         return timer
