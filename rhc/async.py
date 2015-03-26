@@ -46,7 +46,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             close   : close socket after request complete, boolean
     '''
     url = _URLParser(url)
-    context = _Context(resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close)
+    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close)
     ssl = SSLParam() if url.is_ssl else None
     SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
 
@@ -71,7 +71,7 @@ class RequestCallback(object):
         pass
 
     # --- handy callbacks for logging and that sort of thing --- #
-    # --- (see tcpsocket.BasicHandler)                       --- #
+    # --- (see tcpsocket.BasicHandler & httphandler)         --- #
     # --- (on_timeout is triggered here)                     --- #
 
     def on_open(self, handler):
@@ -86,14 +86,18 @@ class RequestCallback(object):
     def on_ready(self, handler):
         pass
 
+    def on_http_send(self, handler, headers, content):
+        pass
+
     def on_timeout(self, handler):
         pass
 
 
 class _Context(object):
 
-    def __init__(self, resource, callback, content, headers, method, timeout, close):
+    def __init__(self, host, resource, callback, content, headers, method, timeout, close):
         self.done = False
+        self.host = host
         self.resource = resource
         self.callback = callback
         self.content = content
@@ -144,7 +148,10 @@ class _Handler(HTTPHandler):
     def on_ready(self):
         ctx = self.context
         self.callback.on_ready(self)
-        self.send(method=ctx.method, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close)
+        self.send(method=ctx.method, host=ctx.host, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close)
+
+    def on_http_send(self, headers, content):
+        self.callback.on_http_send(self, headers, content)
 
     def on_http_data(self):
         self.context.timer.delete()
