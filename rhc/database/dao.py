@@ -229,11 +229,12 @@ class DAO(object):
         the specified object.
 
         Parameters:
-            obj - object to 'join' to self
+            obj - object to 'join' to self, if None then pass
 
         Returns:
             self
         '''
-        self._tables[obj.TABLE] = obj
-        obj._tables = self._tables
+        if obj:
+            self._tables[obj.TABLE] = obj
+            obj._tables = self._tables
         return self
