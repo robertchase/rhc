@@ -36,10 +36,13 @@ class DAO(object):
     CALCULATED_FIELDS = {}
     DEFAULT = {}
     JSON_FIELDS = ()
+    FOREIGN = {}  # name: 'class path'
+    CHILDREN = {}  # name: 'class path'
 
     def __init__(self, **kwargs):
         self._tables = {}
         self._children = {}
+        self._foreign(kwargs)
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
@@ -50,6 +53,7 @@ class DAO(object):
             self.on_new(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
+        # self._join_foreign()
         self.after_init()
 
     def on_new(self, kwargs):
@@ -64,19 +68,20 @@ class DAO(object):
     def after_init(self):
         pass
 
-    def autoload(self, table):
-        ''' dynamically load data from a related table
+    def _foreign(self, kwargs):
+        ''' identify and translate foreign key relations
 
-        When a reference is made to an attribute which is not one of the specified
-        FIELDS or CALCULATED_FIELDS, or if a lookup is done using the [...] syntax,
-        it is treated as a reference to a DAO object joined with this object during
-        query processing. If that object is not found, a call is made to this
-        method so that the data can be loaded on-demand.
+            kwargs that match table names specified in FOREIGN are translated from
+            objects to ids using a "table_name + '_id' = object.id" pattern.
 
-        This method can return None, which will result in an AttributeError,
-        or dynamically load a DAO object and return it.
+            foreign objects are cached in self with the join method.
         '''
-        return None
+        for table in self.FOREIGN.keys():
+            t = kwargs.get(table)
+            if t:
+                kwargs[table + '_id'] = t.id
+                del kwargs[table]
+                self.join(t)
 
     def _validate(self, kwargs):
         ''' make sure field names are valid '''
@@ -100,18 +105,25 @@ class DAO(object):
             if kwargs[f]:
                 kwargs[f] = json.loads(kwargs[f])
 
+    @staticmethod
+    def _import(target):
+        modnam, clsnam = target.rsplit('.', 1)
+        mod = __import__(modnam)
+        for part in modnam.split('.')[1:]:
+            mod = getattr(mod, part)
+        return getattr(mod, clsnam)
+
     def __getattr__(self, name):
-        ''' see if name refers to cached parent or children values '''
         if name in self._tables:
-            result = self._tables[name]
+            result = self._tables[name]  # cached foreign or Query.join added object
+        elif name in self.FOREIGN:
+            result = self.foreign(self._import(self.FOREIGN[name]))  # foreign lookup
         elif name in self._children:
-            result = self._children[name]
+            result = self._children[name]  # cached children
+        elif name in self.CHILDREN:
+            result = self.children(self._import(self.CHILDREN[name]))  # children lookup
         else:
-            result = self.autoload(name)
-            if result:
-                self.join(result)
-            else:
-                raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
+            raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
         return result
 
     def __getitem__(self, name):
@@ -165,6 +177,7 @@ class DAO(object):
         self.after_save()
         for n in self.JSON_FIELDS:
             setattr(self, n, cache[n])
+        return self
 
     def on_json_save(self, name, obj):
         return obj
@@ -196,7 +209,7 @@ class DAO(object):
             self._children[child] = [c.join(self) for c in cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)]
         return self._children[child]
 
-    def peer(self, cls):
+    def foreign(self, cls):
         '''
             return the instance of cls to which self has a foreign_key reference.
 
@@ -204,11 +217,11 @@ class DAO(object):
 
             a lazy cache is maintained (query is done at most one time) using the join method.
         '''
-        peer = cls.TABLE
-        if peer not in self._tables:
-            peer_id = getattr(self, '%s_id' % peer)
-            self.join(cls.query().where('%s.id = %%s' % peer).execute(peer_id, one=True))
-        return self._tables[peer]
+        foreign = cls.TABLE
+        if foreign not in self._tables:
+            foreign_id = getattr(self, '%s_id' % foreign)
+            self.join(cls.query().where('%s.id = %%s' % foreign).execute(foreign_id, one=True))
+        return self._tables[foreign]
 
     @classmethod
     def load(cls, id):
