@@ -174,6 +174,7 @@ class DAO(object):
             self._executed_stmt = cur._executed
         if new:
             setattr(self, 'id', cur.lastrowid)
+            self.after_insert()
         self.after_save()
         for n in self.JSON_FIELDS:
             setattr(self, n, cache[n])
@@ -186,6 +187,9 @@ class DAO(object):
         pass
 
     def before_insert(self):
+        pass
+
+    def after_insert(self):
         pass
 
     def after_save(self):
