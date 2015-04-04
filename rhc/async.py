@@ -21,6 +21,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import json
+import types
+
 from socket import gethostbyname
 from urlparse import urlparse
 
@@ -96,6 +99,13 @@ class RequestCallback(object):
 class _Context(object):
 
     def __init__(self, host, resource, callback, content, headers, method, timeout, close):
+
+        if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
+            content = json.dumps(content)
+            if headers is None:
+                headers = {}
+            headers['Content-Type'] = 'application/json'
+
         self.done = False
         self.host = host
         self.resource = resource
