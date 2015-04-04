@@ -58,6 +58,8 @@ class HTTPHandler(BasicHandler):
         super(HTTPHandler, self).__init__(socket, context)
         self.__data = ''
         self.__setup()
+        self.http_max_line_size = 10000
+        self.http_max_header_count = 100
 
     def on_http_send(self, headers, content):
         pass
@@ -150,6 +152,14 @@ class HTTPHandler(BasicHandler):
         self.http_query = {}
         self.__state = self.__status
 
+    def on_http_headers(self):
+        ''' a chance to terminate connection if headers don't check out
+
+            to indicate a problem:
+                return 1, 'error message'
+        '''
+        return 0, None
+
     def on_data(self, data):
         self.http_message += data
         self.__data += data
@@ -165,11 +175,15 @@ class HTTPHandler(BasicHandler):
     def __line(self):
         test = self.__data.split('\n', 1)
         if len(test) == 1:
+            if len(self.__data) > self.http_max_line_size:
+                return self.__error('too much data without a line termination (a)')
             return None
         line, self.__data = test
         if len(line):
             if line[-1] == '\r':
                 line = line[:-1]
+            if len(line) > self.http_max_line_size:
+                return self.__error('too much data without a line termination (b)')
         return line
 
     def __status(self):
@@ -213,28 +227,39 @@ class HTTPHandler(BasicHandler):
             return False
 
         if len(line) == 0:
-            if 'Transfer-Encoding' in self.http_headers:
-                if self.http_headers['Transfer-Encoding'] != 'chunked':
-                    return self.__error('Unsupported Transfer-Encoding value')
-                self.__state = self.__chunked_length
-
-            else:
-                if 'Content-Length' in self.http_headers:
-                    try:
-                        self.__length = int(
-                            self.http_headers['Content-Length'])
-                    except ValueError:
-                        return self.__error('Invalid content length')
-                else:
-                    self.__length = 0
-                self.__state = self.__content
+            return self._end_header()
 
         else:
+            if len(self.http_headers) == self.http_max_header_count:
+                return self.__error('Too many header records defined')
             test = line.split(':', 1)
             if len(test) != 2:
                 return self.__error('Invalid header: missing colon')
             name, value = test
             self.http_headers[name.strip()] = value.strip()
+
+        return True
+
+    def _end_header(self):
+
+        if 'Transfer-Encoding' in self.http_headers:
+            if self.http_headers['Transfer-Encoding'] != 'chunked':
+                return self.__error('Unsupported Transfer-Encoding value')
+            self.__state = self.__chunked_length
+
+        else:
+            if 'Content-Length' in self.http_headers:
+                try:
+                    self.__length = int(self.http_headers['Content-Length'])
+                except ValueError:
+                    return self.__error('Invalid content length')
+            else:
+                self.__length = 0
+            self.__state = self.__content
+
+        rc, result = self.on_http_headers()
+        if rc != 0:
+            return self.__error(result)
 
         return True
 
@@ -292,6 +317,8 @@ class HTTPHandler(BasicHandler):
         test = line.split(':', 1)
         if len(test) != 2:
             return self.__error('Invalid footer: missing colon')
+        if len(self.http_headers) == self.http_max_header_count:
+            return self.__error('Too many header records defined')
         name, value = test
         self.http_headers[name.strip()] = value.strip()
         return True

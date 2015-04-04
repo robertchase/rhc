@@ -42,6 +42,7 @@ def _load(f):
         routes=[],
         context=None,
         port=None,
+        max_content_size=None,
         name='MICRO',
     )
 
@@ -70,6 +71,9 @@ def _load(f):
         elif rectyp == 'PORT':
             kwargs = None
             result['port'] = _import(recval)()
+        elif rectyp == 'MAX_CONTENT_SIZE':
+            kwargs = None
+            result['max_content_size'] = _import(recval)()
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
 
@@ -88,6 +92,14 @@ class MicroRESTHandler(RESTHandler):
     def on_close(self):
         logmsg(903, self.id, self.full_address())
 
+    def on_http_headers(self):
+        max = self.context.max_content_size
+        if max:
+            len = self.http_headers.get('Content-Length')
+            if len is not None and len > max:
+                return 1, 'Content-Length exceeds maximum size'
+        return 0, None
+
     def on_rest_data(self, request, *groups):
         request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
         logmsg(904, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
@@ -100,6 +112,10 @@ class MicroRESTHandler(RESTHandler):
 
     def on_rest_no_match(self):
         logmsg(910, self.id, self.http_method, self.http_resource)
+
+    def on_http_error(self):
+        logmsg(911, self.id, self.error)
+        self.send_server(code=414, message='Request Entity Too Large')
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exc(trace)
@@ -177,6 +193,11 @@ if __name__ == '__main__':
         DISPLAY ALWAYS
         TEXT no match cid=%d, method=%s, resource=%s
 
+        MESSAGE 911
+        LOG     WARNING
+        DISPLAY ALWAYS
+        TEXT http error cid=%d: %s
+
     ''')
     if args.messagefile:
         messages = (messages, args.messagefile)
@@ -185,6 +206,7 @@ if __name__ == '__main__':
     m = RESTMapper(context=config['context'])
     for pattern, kwargs in config['routes']:
         m.add(pattern, **kwargs)
+    m.max_content_size = config['max_content_size']
 
     SERVER.add_server(config['port'], MicroRESTHandler, m)
     logmsg(900, config['port'])
