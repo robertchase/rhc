@@ -42,7 +42,9 @@ def _load(f):
         routes=[],
         context=None,
         port=None,
-        max_content_size=None,
+        max_content_length=None,
+        max_line_length=None,
+        max_header_count=None,
         name='MICRO',
     )
 
@@ -61,6 +63,7 @@ def _load(f):
             if kwargs is None:
                 raise Exception("Line %d contains a %s that doesn't belong to a ROUTE" % (lnum, rectyp))
             kwargs[rectyp.lower()] = _import(recval)
+
         elif rectyp == 'INIT':
             _import(recval)()
         elif rectyp == 'NAME':
@@ -71,9 +74,17 @@ def _load(f):
         elif rectyp == 'PORT':
             kwargs = None
             result['port'] = _import(recval)()
-        elif rectyp == 'MAX_CONTENT_SIZE':
+
+        elif rectyp == 'MAX_CONTENT_LENGTH':
             kwargs = None
-            result['max_content_size'] = _import(recval)()
+            result['max_content_length'] = _import(recval)()
+        elif rectyp == 'MAX_LINE_LENGTH':
+            kwargs = None
+            result['max_line_length'] = _import(recval)()
+        elif rectyp == 'MAX_HEADER_COUNT':
+            kwargs = None
+            result['max_header_count'] = _import(recval)()
+
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
 
@@ -85,20 +96,22 @@ class MicroRESTHandler(RESTHandler):
     NEXT_ID = 0
     NEXT_REQUEST_ID = 0
 
+    def __init__(self, socket, context):
+        super(MicroRESTHandler, self).__init__(socket, context)
+
+        if context.http_max_content_length:
+            self.http_max_content_length = context.http_max_content_length
+        if context.http_max_line_length:
+            self.http_max_line_length = context.http_max_line_length
+        if context.http_max_header_count:
+            self.http_max_header_count = context.http_max_header_count
+
     def on_open(self):
         self.id = MicroRESTHandler.NEXT_ID = MicroRESTHandler.NEXT_ID + 1
         logmsg(902, self.id, self.full_address())
 
     def on_close(self):
         logmsg(903, self.id, self.full_address())
-
-    def on_http_headers(self):
-        max = self.context.max_content_size
-        if max:
-            len = self.http_headers.get('Content-Length')
-            if len is not None and len > max:
-                return 1, 'Content-Length exceeds maximum size'
-        return 0, None
 
     def on_rest_data(self, request, *groups):
         request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
@@ -115,7 +128,6 @@ class MicroRESTHandler(RESTHandler):
 
     def on_http_error(self):
         logmsg(911, self.id, self.error)
-        self.send_server(code=414, message='Request Entity Too Large')
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exc(trace)
@@ -206,7 +218,10 @@ if __name__ == '__main__':
     m = RESTMapper(context=config['context'])
     for pattern, kwargs in config['routes']:
         m.add(pattern, **kwargs)
-    m.max_content_size = config['max_content_size']
+
+    m.http_max_content_length = config['max_content_length']
+    m.http_max_line_length = config['max_line_length']
+    m.http_max_header_count = config['max_header_count']
 
     SERVER.add_server(config['port'], MicroRESTHandler, m)
     logmsg(900, config['port'])
