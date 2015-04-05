@@ -58,7 +58,9 @@ class HTTPHandler(BasicHandler):
         super(HTTPHandler, self).__init__(socket, context)
         self.__data = ''
         self.__setup()
-        self.http_max_line_size = 10000
+
+        self.http_max_content_length = None
+        self.http_max_line_length = 10000
         self.http_max_header_count = 100
 
     def on_http_send(self, headers, content):
@@ -175,20 +177,20 @@ class HTTPHandler(BasicHandler):
     def __line(self):
         test = self.__data.split('\n', 1)
         if len(test) == 1:
-            if len(self.__data) > self.http_max_line_size:
+            if len(self.__data) > self.http_max_line_length:
                 return self.__error('too much data without a line termination (a)')
             return None
         line, self.__data = test
         if len(line):
             if line[-1] == '\r':
                 line = line[:-1]
-            if len(line) > self.http_max_line_size:
+            if len(line) > self.http_max_line_length:
                 return self.__error('too much data without a line termination (b)')
         return line
 
     def __status(self):
         line = self.__line()
-        if line is None:
+        if line is False or line is None:
             return False
         toks = line.split()
         if len(toks) < 3:
@@ -253,6 +255,10 @@ class HTTPHandler(BasicHandler):
                     self.__length = int(self.http_headers['Content-Length'])
                 except ValueError:
                     return self.__error('Invalid content length')
+                if self.http_max_content_length:
+                    if self.__length > self.http_max_content_length:
+                        self.send_server(code=413, message='Request Entity Too Large')
+                        return self.__error('Content-Length exceeds maximum length')
             else:
                 self.__length = 0
             self.__state = self.__content
@@ -284,6 +290,10 @@ class HTTPHandler(BasicHandler):
         if self.__length == 0:
             self.__state = self.__footer
             return True
+        if self.http_max_content_length:
+            if (len(self.__data) + self.__length) > self.http_max_content_length:
+                self.send_server(code=413, message='Request Entity Too Large')
+                return self.__error('Content-Length exceeds maximum length')
         self.__state = self.__chunked_content
         return True
 
