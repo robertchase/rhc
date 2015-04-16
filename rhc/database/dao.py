@@ -148,8 +148,6 @@ class DAO(object):
         return json
 
     def save(self):
-        if 'id' not in self.FIELDS:
-            raise Exception('DAO.save() requireds that an "id" field be defined')
         cache = {}
         for n in self.JSON_FIELDS:
             v = cache[n] = getattr(self, n)
@@ -164,6 +162,8 @@ class DAO(object):
             new = True
             stmt = 'INSERT INTO `' + self.TABLE + '` (' + ','.join('`' + f + '`' for f in fields) + ') VALUES (' + ','.join('%s' for n in range(len(fields))) + ')'
         else:
+            if 'id' not in self.FIELDS:
+                raise Exception('DAO UPDATE requires that an "id" field be defined')
             new = False
             stmt = 'UPDATE `' + self.TABLE + '` SET ' + ','.join(['`%s`=%%s' % n for n in fields]) + ' WHERE id=%s'
             args.append(self.id)
@@ -173,7 +173,8 @@ class DAO(object):
             cur.execute(stmt, args)
             self._executed_stmt = cur._executed
         if new:
-            setattr(self, 'id', cur.lastrowid)
+            if 'id' in self.FIELDS:
+                setattr(self, 'id', cur.lastrowid)
             self.after_insert()
         self.after_save()
         for n in self.JSON_FIELDS:
