@@ -199,6 +199,12 @@ def validate_int(value):
     return int(value)
 
 
+def validate_bool(value):
+    if value in (True, False):
+        return value
+    return {'TRUE': True, 'FALSE': False}[value.upper()]
+
+
 class Stub(object):
 
     '''
