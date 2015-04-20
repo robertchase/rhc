@@ -46,6 +46,7 @@ def _load(f):
         max_line_length=None,
         max_header_count=None,
         name='MICRO',
+        sleep=.1,
     )
 
     kwargs = None
@@ -84,6 +85,10 @@ def _load(f):
         elif rectyp == 'MAX_HEADER_COUNT':
             kwargs = None
             result['max_header_count'] = _import(recval)()
+
+        elif rectyp == 'SLEEP':
+            kwargs = None
+            result['sleep'] = _import(recval)()
 
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
@@ -210,6 +215,11 @@ if __name__ == '__main__':
         DISPLAY ALWAYS
         TEXT http error cid=%d: %s
 
+        MESSAGE 912
+        LOG     INFO
+        DISPLAY ALWAYS
+        TEXT server started (no listening port)
+
     ''')
     if args.messagefile:
         messages = (messages, args.messagefile)
@@ -223,11 +233,16 @@ if __name__ == '__main__':
     m.http_max_line_length = config['max_line_length']
     m.http_max_header_count = config['max_header_count']
 
-    SERVER.add_server(config['port'], MicroRESTHandler, m)
-    logmsg(900, config['port'])
+    if config['port']:
+        SERVER.add_server(config['port'], MicroRESTHandler, m)
+        logmsg(900, config['port'])
+    else:
+        logmsg(912)
+
+    sleep = config['sleep']
     try:
         while True:
-            SERVER.service(.1)
+            SERVER.service(sleep)
             TIMERS.service()
     except KeyboardInterrupt:
         logmsg(901)
