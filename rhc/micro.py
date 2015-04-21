@@ -47,6 +47,7 @@ def _load(f):
         max_header_count=None,
         name='MICRO',
         sleep=.1,
+        first=None,
     )
 
     kwargs = None
@@ -57,7 +58,15 @@ def _load(f):
         rectyp = rectyp.upper()
         recval = recval.strip()
 
-        if rectyp == 'ROUTE':
+        if rectyp == 'PORT':
+            kwargs = None
+            result['port'] = _import(recval)()
+        elif rectyp == 'CONTEXT':
+            result['context'] = _import(recval)()
+        elif rectyp == 'SLEEP':
+            result['sleep'] = float(_import(recval)())
+
+        elif rectyp == 'ROUTE':
             kwargs = {}
             result['routes'].append((recval.strip(), kwargs))
         elif rectyp in ('GET', 'PUT', 'POST', 'DELETE'):
@@ -67,28 +76,18 @@ def _load(f):
 
         elif rectyp == 'INIT':
             _import(recval)()
+        elif rectyp == 'FIRST':
+            result['first'] = _import(recval)
+
         elif rectyp == 'NAME':
             result['name'] = _import(recval)()
-        elif rectyp == 'CONTEXT':
-            kwargs = None
-            result['context'] = _import(recval)()
-        elif rectyp == 'PORT':
-            kwargs = None
-            result['port'] = _import(recval)()
 
         elif rectyp == 'MAX_CONTENT_LENGTH':
-            kwargs = None
             result['max_content_length'] = _import(recval)()
         elif rectyp == 'MAX_LINE_LENGTH':
-            kwargs = None
             result['max_line_length'] = _import(recval)()
         elif rectyp == 'MAX_HEADER_COUNT':
-            kwargs = None
             result['max_header_count'] = _import(recval)()
-
-        elif rectyp == 'SLEEP':
-            kwargs = None
-            result['sleep'] = _import(recval)()
 
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
@@ -239,6 +238,9 @@ if __name__ == '__main__':
     else:
         logmsg(912)
 
+    first = config.get('first')
+    if first:
+        first()
     sleep = config['sleep']
     try:
         while True:
