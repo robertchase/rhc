@@ -23,6 +23,7 @@ THE SOFTWARE.
 '''
 from importlib import import_module
 import traceback
+import uuid
 
 from rhc.log import logmsg
 from rhc.tcpsocket import SERVER
@@ -45,6 +46,7 @@ def _load(f):
         max_content_length=None,
         max_line_length=None,
         max_header_count=None,
+        hide_stack_trace=True,
         name='MICRO',
         sleep=.1,
         first=None,
@@ -89,6 +91,9 @@ def _load(f):
         elif rectyp == 'MAX_HEADER_COUNT':
             result['max_header_count'] = _import(recval)()
 
+        elif rectyp == 'HIDE_STACK_TRACE':
+            result['hide_stack_trace'] = bool(_import(recval)())
+
         else:
             raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
 
@@ -109,6 +114,8 @@ class MicroRESTHandler(RESTHandler):
             self.http_max_line_length = context.http_max_line_length
         if context.http_max_header_count:
             self.http_max_header_count = context.http_max_header_count
+
+        self.hide_stack_trace = context.hide_stack_trace
 
     def on_open(self):
         self.id = MicroRESTHandler.NEXT_ID = MicroRESTHandler.NEXT_ID + 1
@@ -135,8 +142,11 @@ class MicroRESTHandler(RESTHandler):
 
     def on_rest_exception(self, exception_type, value, trace):
         data = traceback.format_exc(trace)
-        logmsg(905, data)
-        return data
+        code = uuid.uuid4().hex
+        logmsg(905, code, data)
+        if self.hide_stack_trace:
+            return 'oh, no! something broke. sorry about that.\nplease report this problem using the following id: %s\n' % code
+        return 'id: %s\n%s' % (code, data)
 
 
 if __name__ == '__main__':
@@ -182,7 +192,8 @@ if __name__ == '__main__':
         MESSAGE 905
         LOG     WARNING
         DISPLAY ALWAYS
-        TEXT exception encountered: %s
+        TEXT exception encountered, code: %s
+        TEXT %s
 
         MESSAGE 906
         LOG     DEBUG
@@ -231,6 +242,7 @@ if __name__ == '__main__':
     m.http_max_content_length = config['max_content_length']
     m.http_max_line_length = config['max_line_length']
     m.http_max_header_count = config['max_header_count']
+    m.hide_stack_trace = config['hide_stack_trace']
 
     if config['port']:
         SERVER.add_server(config['port'], MicroRESTHandler, m)
