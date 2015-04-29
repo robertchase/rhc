@@ -32,7 +32,7 @@ from tcpsocket import SERVER, SSLParam
 from timer import TIMERS
 
 
-def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True):
+def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, event=None):
     ''' make an async http request
 
         When operating a tcpserver.SERVER, use this method to make async HTTP requests that eventually
@@ -47,9 +47,19 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             method  : http method
             timeout : max time, in seconds, allowed for request completion
             close   : close socket after request complete, boolean
+            event   : dictionary of Handler event callback routines
+
+                      on_open(handler)
+                      on_close(handler)
+                      on_handshake(handler, cert): bool, True means keep going
+                      on_ready(handler)
+                      on_http_headers(handler): (rc, result), (0, None) means keep going
+                      on_http_send(handler, headers, content)
+                      on_data(handler)
+
     '''
     url = _URLParser(url)
-    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close)
+    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, event=event)
     ssl = SSLParam() if url.is_ssl else None
     SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
 
@@ -73,32 +83,10 @@ class RequestCallback(object):
         '''
         pass
 
-    # --- handy callbacks for logging and that sort of thing --- #
-    # --- (see tcpsocket.BasicHandler & httphandler)         --- #
-    # --- (on_timeout is triggered here)                     --- #
-
-    def on_open(self, handler):
-        pass
-
-    def on_close(self, handler):
-        pass
-
-    def on_handshake(self, handler, cert):
-        return True
-
-    def on_ready(self, handler):
-        pass
-
-    def on_http_send(self, handler, headers, content):
-        pass
-
-    def on_timeout(self, handler):
-        pass
-
 
 class _Context(object):
 
-    def __init__(self, host, resource, callback, content, headers, method, timeout, close):
+    def __init__(self, host, resource, callback, content, headers, method, timeout, close, event):
 
         if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
             content = json.dumps(content)
@@ -115,6 +103,7 @@ class _Context(object):
         self.method = method
         self.timeout = timeout
         self.close = close
+        self.event = {} if event is None else event
 
 
 class _Handler(HTTPHandler):
@@ -134,15 +123,19 @@ class _Handler(HTTPHandler):
         self.context.timer.delete()
 
     def on_timeout(self):
-        self.callback.on_timeout(self)
         self._error('timeout')
         self.close()
 
     def on_open(self):
-        self.callback.on_open(self)
+        e_handler = self.context.event.get('on_open')
+        if e_handler:
+            e_handler(self)
 
     def on_handshake(self, cert):
-        return self.callback.on_handshake(self, cert)
+        e_handler = self.context.event.get('on_handshake')
+        if e_handler:
+            return e_handler(self, cert)
+        return True
 
     def on_fail(self):
         self._error('failed to connect')
@@ -151,17 +144,36 @@ class _Handler(HTTPHandler):
         self._error('http error')
 
     def on_close(self):
-        self.callback.on_close(self)
+        e_handler = self.context.event.get('on_close')
+        if e_handler:
+            e_handler(self)
         if not self.context.done:
             self._error('premature close')
 
     def on_ready(self):
         ctx = self.context
-        self.callback.on_ready(self)
+        e_handler = ctx.event.get('on_ready')
+        if e_handler:
+            e_handler(self)
         self.send(method=ctx.method, host=ctx.host, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close)
 
+    def on_http_headers(self):
+        e_handler = self.context.event.get('on_http_headers')
+        if e_handler:
+            return e_handler(self)
+        return 0, None
+
     def on_http_send(self, headers, content):
-        self.callback.on_http_send(self, headers, content)
+        e_handler = self.context.event.get('on_http_handler')
+        if e_handler:
+            return e_handler(self, headers, content)
+
+    def on_data(self, data):
+        e_handler = self.context.event.get('on_data')
+        if e_handler:
+            return e_handler(self, data)
+        super(_Handler, self).on_data(data)
+
 
     def on_http_data(self):
         self.context.timer.delete()
