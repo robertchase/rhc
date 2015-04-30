@@ -32,7 +32,7 @@ from tcpsocket import SERVER, SSLParam
 from timer import TIMERS
 
 
-def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, event=None):
+def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, recv_len=None, event=None):
     ''' make an async http request
 
         When operating a tcpserver.SERVER, use this method to make async HTTP requests that eventually
@@ -47,6 +47,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             method  : http method
             timeout : max time, in seconds, allowed for request completion
             close   : close socket after request complete, boolean
+            recv_len: read buffer size (default = BasicHandler.RECV_LEN)
             event   : dictionary of Handler event callback routines
 
                       on_open(handler)
@@ -59,7 +60,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
 
     '''
     url = _URLParser(url)
-    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, event=event)
+    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, recv_len=recv_len, event=event)
     ssl = SSLParam() if url.is_ssl else None
     SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
 
@@ -86,7 +87,7 @@ class RequestCallback(object):
 
 class _Context(object):
 
-    def __init__(self, host, resource, callback, content, headers, method, timeout, close, event):
+    def __init__(self, host, resource, callback, content, headers, method, timeout, close, recv_len, event):
 
         if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
             content = json.dumps(content)
@@ -103,6 +104,7 @@ class _Context(object):
         self.method = method
         self.timeout = timeout
         self.close = close
+        self.recv_len = recv_len
         self.event = {} if event is None else event
 
 
@@ -111,6 +113,8 @@ class _Handler(HTTPHandler):
     def __init__(self, socket, context):
         context.timer = TIMERS.add(context.timeout * 1000.0, self.on_timeout, onetime=True).start()
         super(_Handler, self).__init__(socket, context)
+        if context.recv_len is not None:
+            self.RECV_LEN = context.recv_len
 
     @property
     def callback(self):
@@ -171,7 +175,7 @@ class _Handler(HTTPHandler):
     def on_data(self, data):
         e_handler = self.context.event.get('on_data')
         if e_handler:
-            return e_handler(self, data)
+            e_handler(self, data)
         super(_Handler, self).on_data(data)
 
 
