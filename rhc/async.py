@@ -45,7 +45,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             content : http content to send
             headers : dictionary of http headers
             method  : http method
-            timeout : max time, in seconds, allowed for request completion
+            timeout : max time, in seconds, allowed for network inactivity
             close   : close socket after request complete, boolean
             recv_len: read buffer size (default = BasicHandler.RECV_LEN)
             event   : dictionary of Handler event callback routines
@@ -56,7 +56,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
                       on_ready(handler)
                       on_http_headers(handler): (rc, result), (0, None) means keep going
                       on_http_send(handler, headers, content)
-                      on_data(handler)
+                      on_data(handler, data)
 
     '''
     url = _URLParser(url)
@@ -131,11 +131,13 @@ class _Handler(HTTPHandler):
         self.close()
 
     def on_open(self):
+        self.context.timer.re_start()
         e_handler = self.context.event.get('on_open')
         if e_handler:
             e_handler(self)
 
     def on_handshake(self, cert):
+        self.context.timer.re_start()
         e_handler = self.context.event.get('on_handshake')
         if e_handler:
             return e_handler(self, cert)
@@ -173,11 +175,11 @@ class _Handler(HTTPHandler):
             return e_handler(self, headers, content)
 
     def on_data(self, data):
+        self.context.timer.re_start()
         e_handler = self.context.event.get('on_data')
         if e_handler:
             e_handler(self, data)
         super(_Handler, self).on_data(data)
-
 
     def on_http_data(self):
         self.context.timer.delete()
