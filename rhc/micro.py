@@ -49,6 +49,7 @@ def _load(f):
         hide_stack_trace=True,
         name='MICRO',
         sleep=.1,
+        service_count=100,
         first=None,
     )
 
@@ -67,6 +68,8 @@ def _load(f):
             result['context'] = _import(recval)()
         elif rectyp == 'SLEEP':
             result['sleep'] = float(_import(recval)())
+        elif rectyp == 'SERVICE_COUNT':
+            result['service_count'] = float(_import(recval)())
 
         elif rectyp == 'ROUTE':
             kwargs = {}
@@ -254,9 +257,10 @@ if __name__ == '__main__':
     if first:
         first()
     sleep = config['sleep']
+    service_count = config['service_count']
     try:
         while True:
-            SERVER.service(sleep)
+            SERVER.service(sleep, service_count)
             TIMERS.service()
     except KeyboardInterrupt:
         logmsg(901)
