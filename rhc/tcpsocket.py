@@ -245,6 +245,9 @@ class Server (object):
           each socket will be given time to do one thing after which the
           process will continue until all activity is handled. on additional
           calls to select, the delay value will be zero (no delay).
+
+          if max_iterations is set, it will limit the number of times the
+          service loop will execute if network activity persists.
         '''
         iterations = 0
         did_anything = False
