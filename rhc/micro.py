@@ -26,7 +26,7 @@ import traceback
 import uuid
 
 from rhc.log import logmsg
-from rhc.tcpsocket import SERVER
+from rhc.tcpsocket import SERVER, SSLParam
 from rhc.resthandler import RESTMapper, RESTHandler
 from rhc.timer import TIMERS
 
@@ -247,9 +247,17 @@ if __name__ == '__main__':
     m.http_max_header_count = config['max_header_count']
     m.hide_stack_trace = config['hide_stack_trace']
 
-    if config['port']:
-        SERVER.add_server(config['port'], MicroRESTHandler, m)
-        logmsg(900, config['port'])
+    listen = config.get('port')
+    if listen:
+        if isinstance(listen, tuple):
+            port = listen.port
+            listen.ssl_params['server_side'] = True
+            ssl = SSLParam(**listen.ssl_params)
+        else:
+            port = listen
+            ssl = None
+        SERVER.add_server(port, MicroRESTHandler, m, ssl=ssl)
+        logmsg(900, port)
     else:
         logmsg(912)
 
