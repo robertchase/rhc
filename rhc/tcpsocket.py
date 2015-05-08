@@ -193,7 +193,7 @@ class Server (object):
         readable, writeable, other = select.select(
             self.__readable, self.__writeable, [], delay
         )
-        count += len(readable) + len(writeable)
+        count += len(writeable)
 
         # --- handle one thing on each socket with activity
         for s in self.__readable:
@@ -204,12 +204,10 @@ class Server (object):
               ssl has some buffered data from a previously read chunk.
 
               the logic here looks at every socket in the potentially
-              readable list and checks it for the presense of either data
+              readable list and checks it for the presence of either data
               on the socket or pending data in the ssl buffer.
             '''
-            if s in readable:
-                s.readable()
-            elif s.pending():
+            if s in readable or s.pending():
                 count += 1
                 s.readable()
 
@@ -224,10 +222,11 @@ class Server (object):
 
         # --- select sockets waiting to write
         sending = [s for s in self.__readable if s.more_to_send()]
-        readable, sendable, other = select.select([], sending, [], 0)
-        for s in sendable:
-            count += 1
-            s._send()
+        if sending:
+            readable, sendable, other = select.select([], sending, [], 0)
+            for s in sendable:
+                count += 1
+                s._send()
 
         # --- zero when no sockets have activity
         return count
