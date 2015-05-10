@@ -90,7 +90,9 @@ class HTTPHandler(BasicHandler):
         if self.http_headers.get('Content-Type', '').startswith('multipart'):
             self._multipart()
         self.on_http_data()
-        if self.http_headers.get('Connection') == 'close':
+
+    def on_send_complete(self):
+        if self.__close_on_complete:
             self.close()
 
     def __send(self, headers, content):
@@ -124,6 +126,8 @@ class HTTPHandler(BasicHandler):
         self.__send(headers, content)
 
     def send_server(self, content='', code=200, message='OK', headers=None):
+
+        self.__close_on_complete = self.http_headers.get('Connection') == 'close'
 
         if headers is None:
             headers = {}
