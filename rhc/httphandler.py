@@ -63,6 +63,8 @@ class HTTPHandler(BasicHandler):
         self.http_max_line_length = 10000
         self.http_max_header_count = 100
 
+        self.__close_on_complete = False
+
     def on_http_send(self, headers, content):
         pass
 
