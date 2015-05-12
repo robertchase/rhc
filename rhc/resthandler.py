@@ -25,10 +25,14 @@ import datetime
 import json
 import re
 import sys
+import traceback
 import types
 import urlparse
 
 from httphandler import HTTPHandler
+
+import logging
+log = logging.getLogger(__name__)
 
 
 class RESTRequest(object):
@@ -195,6 +199,39 @@ class RESTHandler(HTTPHandler):
 
     def on_rest_send(self, code, message, content, headers):
         pass
+
+
+class LoggingRESTHandler(RESTHandler):
+
+    NEXT_ID = 0
+    NEXT_REQUEST_ID = 0
+
+    def on_open(self):
+        self.id = LoggingRESTHandler.NEXT_ID = LoggingRESTHandler.NEXT_ID + 1
+        log.info('open: private-cid=%d, %s', self.id, self.full_address())
+
+    def on_close(self):
+        log.info('close: private-cid=%d, %s', self.id, self.full_address())
+
+    def on_rest_data(self, request, *groups):
+        request.id = LoggingRESTHandler.NEXT_REQUEST_ID = LoggingRESTHandler.NEXT_REQUEST_ID + 1
+        log.info('request private-cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s', self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
+        log.debug('request private-cid=%d, rid=%d, headers=%s', self.id, request.id, request.http_headers)
+        log.debug('request private-cid=%d, rid=%d, content=%s', self.id, request.id, request.http_content[:100] if request.http_content else '')
+
+    def on_rest_send(self, code, message, content, headers):
+        log.debug('response private-cid=%d, code=%d, message=%s, headers=%s', self.id, code, message, headers)
+        log.debug('response private-cid=%d, content=%s', self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
+
+    def on_rest_no_match(self):
+        log.warning('no match private-cid=%d, method=%s, resource=%s', self.id, self.http_method, self.http_resource)
+
+    def on_http_error(self):
+        log.warning('http error private-cid=%d: %s', self.id, self.error)
+
+    def on_rest_exception(self, exception_type, value, trace):
+        log.exception('exception encountered:')
+        return traceback.format_exc(trace)
 
 
 class RESTMapper(object):
