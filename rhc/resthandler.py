@@ -309,6 +309,16 @@ class RESTMapper(object):
         return None, None
 
 
+def import_by_pathname(target):
+    if isinstance(target, str):
+        modnam, clsnam = target.rsplit('.', 1)
+        mod = __import__(modnam)
+        for part in modnam.split('.')[1:]:
+            mod = getattr(mod, part)
+        return getattr(mod, clsnam)
+    return target
+
+
 class RESTMapping(object):
 
     ''' container for one mapping definition '''
@@ -316,10 +326,10 @@ class RESTMapping(object):
     def __init__(self, pattern, get, post, put, delete):
         self.pattern = re.compile(pattern)
         self.method = {
-            'get': get,
-            'post': post,
-            'put': put,
-            'delete': delete
+            'get': import_by_pathname(get),
+            'post': import_by_pathname(post),
+            'put': import_by_pathname(put),
+            'delete': import_by_pathname(delete),
         }
 
 
