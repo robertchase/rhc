@@ -25,6 +25,7 @@ import json
 import types
 
 from socket import gethostbyname
+from urllib import urlencode
 from urlparse import urlparse
 
 from httphandler import HTTPHandler
@@ -89,11 +90,15 @@ class _Context(object):
 
     def __init__(self, host, resource, callback, content, headers, method, timeout, close, recv_len, event):
 
+        if headers is None:
+            headers = {}
+        if headers.get('Content-Type') == 'application/x-www-form-urlencoded' and isinstance(content, types.DictType):
+            content = urlencode(content)
+
         if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
             content = json.dumps(content)
-            if headers is None:
-                headers = {}
-            headers['Content-Type'] = 'application/json'
+            if 'Content-Type' not in headers:
+                headers['Content-Type'] = 'application/json'
 
         self.done = False
         self.host = host
