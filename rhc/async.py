@@ -155,7 +155,6 @@ class _Handler(HTTPHandler):
         self._error('http error')
 
     def on_close(self):
-        super(_Handler, self).on_close()
         e_handler = self.context.event.get('on_close')
         if e_handler:
             e_handler(self)

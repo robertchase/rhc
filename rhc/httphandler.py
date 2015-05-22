@@ -175,7 +175,7 @@ class HTTPHandler(BasicHandler):
         while self.__state():
             pass
 
-    def on_close(self):
+    def _on_close(self):
         if self.__identity_encoding:
             self.__identity_encoding = False
             self.__length = len(self.__data)

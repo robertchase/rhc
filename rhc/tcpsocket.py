@@ -579,6 +579,7 @@ class BasicHandler (object):
             self.closed = True
             if self.__socket:
                 self.__socket.close()
+            self._on_close()  # for libraries
             self.on_close()
     # --- Close Methods -------------------------------------------------
     # ---
