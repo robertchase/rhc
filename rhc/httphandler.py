@@ -158,6 +158,7 @@ class HTTPHandler(BasicHandler):
         self.http_resource = None
         self.http_query_string = None
         self.http_query = {}
+        self.__identity_encoding = False
         self.__state = self.__status
 
     def on_http_headers(self):
@@ -173,6 +174,12 @@ class HTTPHandler(BasicHandler):
         self.__data += data
         while self.__state():
             pass
+
+    def on_close(self):
+        if self.__identity_encoding:
+            self.__identity_encoding = False
+            self.__length = len(self.__data)
+            self.__content()
 
     def __error(self, message):
         self.error = message
@@ -266,7 +273,7 @@ class HTTPHandler(BasicHandler):
                         self.send_server(code=413, message='Request Entity Too Large')
                         return self.__error('Content-Length exceeds maximum length')
             else:
-                self.__length = 0
+                self.__identity_encoding = True
             self.__state = self.__content
 
         rc, result = self.on_http_headers()
@@ -276,6 +283,8 @@ class HTTPHandler(BasicHandler):
         return True
 
     def __content(self):
+        if self.__identity_encoding:
+            return False
         if len(self.__data) >= self.__length:
             self.http_content = self.__data[:self.__length]
             self._on_http_data()
