@@ -267,7 +267,12 @@ class HTTPHandler(BasicHandler):
                         return self.__error('Content-Length exceeds maximum length')
                 self.__state = self.__content
             else:
-                self.__state = self.__identity
+                if self.http_method:
+                    self.__length = 0
+                    self.__content()
+                else:
+                    self._on_close = self.__on_identity_close
+                    self.__state = self.__identity
 
         rc, result = self.on_http_headers()
         if rc != 0:
@@ -278,10 +283,9 @@ class HTTPHandler(BasicHandler):
     def __identity(self):
         return False
 
-    def _on_close(self):
-        if self.__state == self.__identity:
-            self.http_content = self.__data
-            self._on_http_data()
+    def __on_identity_close(self):
+        self.http_content = self.__data
+        self._on_http_data()
 
     def __content(self):
         if len(self.__data) >= self.__length:

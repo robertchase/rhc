@@ -68,6 +68,8 @@ class RESTRequest(object):
                     self._json = json.loads(self.http_content)
                 except Exception:
                     raise Exception('Unable to parse json content')
+            elif len(self.http_query) > 0:
+                self._json = self.http_query
             else:
                 self._json = {n: v for n, v in urlparse.parse_qsl(self.http_content)}
         return self._json
