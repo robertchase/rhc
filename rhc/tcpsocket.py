@@ -573,6 +573,9 @@ class BasicHandler (object):
                 self.__closing = True
                 self.__socket.shutdown(how)
 
+    def _on_close(self):
+        pass
+
     def __close(self):
         if not self.closed:
             self.__closing = False
