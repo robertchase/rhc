@@ -25,6 +25,7 @@ import datetime
 import json
 import re
 import sys
+import time
 import traceback
 import types
 import urlparse
@@ -223,7 +224,7 @@ class LoggingRESTHandler(RESTHandler):
 
     def on_rest_send(self, code, message, content, headers):
         log.debug('response cid=%d, code=%d, message=%s, headers=%s', self.id, code, message, headers)
-        log.debug('response cid=%d, content=%s', self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
+        log.debug('response cid=%d, t=%.3f, content=%s', self.id, float(time.time() - self.start), '' if not content else (content[:100] + '...') if len(content) > 100 else content)
 
     def on_rest_no_match(self):
         log.warning('no match cid=%d, method=%s, resource=%s', self.id, self.http_method, self.http_resource)
