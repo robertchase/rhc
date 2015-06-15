@@ -117,12 +117,11 @@ class HTTPHandler(BasicHandler):
         if close:
             headers['Connection'] = 'close'
 
-        if not host:
-            host = '%s:%s' % self.peer_address()
+        if 'host' not in (k.lower() for k in headers):
+            headers['Host'] = host if host else '%s:%s' % self.peer_address()
 
-        headers = '%s %s HTTP/1.1\r\nHost: %s\r\n%s\r\n\r\n' % (
-            method, resource, host,
-            '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()])
+        headers = '%s %s HTTP/1.1\r\n%s\r\n\r\n' % (
+            method, resource, '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()])
         )
 
         self.__send(headers, content)
