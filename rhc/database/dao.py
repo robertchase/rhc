@@ -34,6 +34,7 @@ class DAO(object):
     # TABLE = ''
     # FIELDS = ()
     CALCULATED_FIELDS = {}
+    PROPERTIES = ()
     DEFAULT = {}
     JSON_FIELDS = ()
     FOREIGN = {}  # name: 'class path'
@@ -92,7 +93,7 @@ class DAO(object):
 
     def _normalize(self, kwargs):
         ''' establish default or empty values for all fields '''
-        for f in chain(self.FIELDS, self.CALCULATED_FIELDS):
+        for f in chain(self.FIELDS, self.CALCULATED_FIELDS, self.PROPERTIES):
             if f != 'id':
                 if f not in kwargs:
                     if f in self.DEFAULT:
@@ -131,7 +132,7 @@ class DAO(object):
         return self.__getattr__(name)
 
     def __setattr__(self, name, value):
-        if name.startswith('_') or name in self.FIELDS:
+        if name.startswith('_') or name in self.FIELDS or name in self.PROPERTIES:
             self.__dict__[name] = value
         else:
             raise AttributeError('%s is not a valid field name' % name)
