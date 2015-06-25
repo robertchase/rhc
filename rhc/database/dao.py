@@ -152,7 +152,7 @@ class DAO(object):
         cache = {}
         for n in self.JSON_FIELDS:
             v = cache[n] = getattr(self, n)
-            if v:
+            if v is not None:
                 setattr(self, n, json.dumps(self.on_json_save(n, v)))
         self.before_save()
         if not hasattr(self, 'id'):
