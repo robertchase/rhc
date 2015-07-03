@@ -449,20 +449,26 @@ class BasicHandler (object):
         if not self.NAGLE:
             self.__socket.setsockopt(
                 socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        if self.__ssl_param:
-            self.__socket = ssl.wrap_socket(
-                self.__socket,
-                keyfile=self.__ssl_param.keyfile,
-                certfile=self.__ssl_param.certfile,
-                server_side=self.__ssl_param.server_side,
-                cert_reqs=self.__ssl_param.cert_reqs,
-                ssl_version=self.__ssl_param.ssl_version,
-                ca_certs=self.__ssl_param.ca_certs,
-                do_handshake_on_connect=False
-            )
+        if self.is_ssl():
+            try:
+                self.__socket = ssl.wrap_socket(
+                    self.__socket,
+                    keyfile=self.__ssl_param.keyfile,
+                    certfile=self.__ssl_param.certfile,
+                    server_side=self.__ssl_param.server_side,
+                    cert_reqs=self.__ssl_param.cert_reqs,
+                    ssl_version=self.__ssl_param.ssl_version,
+                    ca_certs=self.__ssl_param.ca_certs,
+                    do_handshake_on_connect=False
+                )
+            except Exception as e:
+                self.close_reason = str(e)
+                self.__close()
+                return False
         self.on_open()
         if not self.is_ssl():
             self.on_ready()
+        return True
 
     def on_fail(self):
         '''
@@ -689,23 +695,24 @@ class BasicHandler (object):
         self.__incoming = False
         try:
             rc = self.__socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-            if 0 == rc:
+            if rc == 0:
                 pass
-            elif errno.ECONNREFUSED == rc:
+            elif rc == errno.ECONNREFUSED:
                 self.error = 'no listener at address'
-            elif errno.ENETUNREACH == rc:
+            elif rc == errno.ENETUNREACH:
                 self.error = 'network is unreachable'
-            elif errno.ECONNRESET == rc:
+            elif rc == errno.ECONNRESET:
                 self.error = 'connection reset by peer'
-            elif errno.ETIMEDOUT == rc:
+            elif rc == errno.ETIMEDOUT:
                 self.error = 'connection timeout'
             else:
                 self.error = 'failed to connect, so_error=%d' % rc
         except Exception, e:
             self.error = str(e)
             rc = 1
-        if 0 == rc:
-            self.on_opening()
+        if rc == 0:
+            if not self.on_opening():
+                return 0
             return 1
         self.on_fail()
         self.close_reason = 'failed to connect'
@@ -725,7 +732,7 @@ class BasicHandler (object):
         return False
 
     def more_to_send(self):
-        if 0 == len(self.__sending):
+        if len(self.__sending) == 0:
             return False
         return True
     # --- Service Methods -----------------------------------------------
@@ -769,11 +776,11 @@ class Listener:
         if h.on_accept():
             if self.__ssl:
                 h.set_ssl(self.__ssl)
-            h.on_opening()
-            if self.__ssl:
-                self.__handshake.append(h)
-            else:
-                self.__readable.append(h)
+            if h.on_opening():
+                if self.__ssl:
+                    self.__handshake.append(h)
+                else:
+                    self.__readable.append(h)
         else:
             h.close()
 
