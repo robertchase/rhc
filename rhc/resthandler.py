@@ -211,10 +211,10 @@ class LoggingRESTHandler(RESTHandler):
 
     def on_open(self):
         self.id = LoggingRESTHandler.NEXT_ID = LoggingRESTHandler.NEXT_ID + 1
-        log.info('open: cid=%d, %s', self.id, self.full_address())
+        log.info('open: cid=%d, %s', self.id, self.name)
 
     def on_close(self):
-        log.info('close: cid=%d, %s', self.id, self.full_address())
+        log.info('close: cid=%s, %s: reason=%s', getattr(self, 'id', '.'), self.name, self.close_reason)
 
     def on_rest_data(self, request, *groups):
         request.id = LoggingRESTHandler.NEXT_REQUEST_ID = LoggingRESTHandler.NEXT_REQUEST_ID + 1
