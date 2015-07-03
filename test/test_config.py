@@ -1,7 +1,8 @@
 import inspect
 import os
 import unittest
-from rhc.config import Config, validate_int
+from rhc.config import Config, validate_int, validate_file
+
 
 class ConfigText(unittest.TestCase):
 
@@ -22,6 +23,24 @@ class ConfigText(unittest.TestCase):
         cfg._define('test', 0, validate_int)
         cfg._set('test', '100')
         self.assertEqual(cfg.test, 100)
+
+    def test_empty_int(self):
+        cfg = Config()
+        cfg._define('test', validator=validate_int)
+        self.assertRaises(ValueError, cfg._set, 'test', '')
+
+    def test_file(self):
+        cfg = Config()
+        cfg._define('test', validator=validate_file)
+        data = os.path.splitext(inspect.getfile(self.__class__))[0] + '.txt'
+        cfg._set('test', data)
+        self.assertEqual(cfg.test, data)
+
+    def test_missing_file(self):
+        cfg = Config()
+        cfg._define('test', validator=validate_file)
+        data = os.path.splitext(inspect.getfile(self.__class__))[0] + '.txtt'
+        self.assertRaises(Exception, cfg._set, 'test', data)
 
     def test_load(self):
         cfg = Config()
@@ -51,3 +70,6 @@ class ConfigText(unittest.TestCase):
         self.assertEqual(cfg.a.b.validator, 102)
         cfg._define('a.b.value', 103)
         self.assertEqual(cfg.a.b.value, 103)
+
+if __name__ == '__main__':
+    unittest.main()

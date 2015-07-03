@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import os
 import re
 
 
@@ -203,6 +204,12 @@ def validate_bool(value):
     if value in (True, False):
         return value
     return {'TRUE': True, 'FALSE': False}[value.upper()]
+
+
+def validate_file(value):
+    if os.path.isfile(value):
+        return value
+    raise Exception('%s not found' % value)
 
 
 class Stub(object):
