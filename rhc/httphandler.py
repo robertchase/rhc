@@ -101,8 +101,9 @@ class HTTPHandler(BasicHandler):
         self.on_http_send(headers, content)
         super(HTTPHandler, self).send(headers + content)
 
-    def send(self, method='GET', host=None, resource='/', headers=None,
-             content='', close=False):
+    def send(self, method='GET', host=None, resource='/', headers=None, content='', close=False):
+
+        self.http_method = method
 
         if not headers:
             headers = {}
@@ -249,7 +250,11 @@ class HTTPHandler(BasicHandler):
 
     def _end_header(self):
 
-        if 'Transfer-Encoding' in self.http_headers:
+        if self.http_method == 'HEAD':
+            self.__length = 0
+            self.__state = self.__content
+
+        elif 'Transfer-Encoding' in self.http_headers:
             if self.http_headers['Transfer-Encoding'] != 'chunked':
                 return self.__error('Unsupported Transfer-Encoding value')
             self.__state = self.__chunked_length
