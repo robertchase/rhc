@@ -79,6 +79,7 @@ class RESTRequest(object):
 class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
 
+        # coerce arguments (note that rest_response sets content)
         if isinstance(content, int):
             code, content = content, ''
         elif isinstance(content, tuple) and len(content) == 2:
@@ -126,7 +127,8 @@ class RESTHandler(HTTPHandler):
         method, the respective rest_handler is called with this object as the
         first parameter, followed by any regex groups.
 
-        A rest_handler function returns a RESTResult object when an immediate
+        A rest_handler function returns a RESTResult object, or something which
+        is coerced to a RESTResult by the rest_response method, when an immediate
         response is available. In order to delay a response (to prevent
         blocking the server) a rest_handler can call the delay() function on the
         request object or return a RESTDelay, followed by a future call to
