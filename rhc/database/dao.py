@@ -55,7 +55,7 @@ class DAO(object):
         for n, v in kwargs.items():
             self.__dict__[n] = v
         # self._join_foreign()
-        self.after_init()
+        self.after_init('id' in kwargs)
 
     def on_new(self, kwargs):
         pass
@@ -66,7 +66,7 @@ class DAO(object):
     def on_load(self, kwargs):
         pass
 
-    def after_init(self):
+    def after_init(self, is_new):
         pass
 
     def _foreign(self, kwargs):
