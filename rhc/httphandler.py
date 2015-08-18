@@ -103,7 +103,7 @@ class HTTPHandler(BasicHandler):
 
     def send(self, method='GET', host=None, resource='/', headers=None, content='', close=False):
 
-        self.http_method = method
+        self._http_method = method
 
         if not headers:
             headers = {}
@@ -250,7 +250,7 @@ class HTTPHandler(BasicHandler):
 
     def _end_header(self):
 
-        if self.http_method == 'HEAD':
+        if getattr(self, '_http_method', None) == 'HEAD':  # this gets set if the send method is called
             self.__length = 0
             self.__state = self.__content
 
@@ -271,7 +271,7 @@ class HTTPHandler(BasicHandler):
                         return self.__error('Content-Length exceeds maximum length')
                 self.__state = self.__content
             else:
-                if self.http_method:
+                if self.http_method:  # this means we are a server (sneaky code)
                     self.__length = 0
                     self.__content()
                 else:
