@@ -41,6 +41,7 @@ class DAO(object):
     CHILDREN = {}  # name: 'class path'
 
     def __init__(self, **kwargs):
+        self.before_init(kwargs)
         self._tables = {}
         self._children = {}
         self._foreign(kwargs)
@@ -54,8 +55,10 @@ class DAO(object):
             self.on_new(kwargs)
         for n, v in kwargs.items():
             self.__dict__[n] = v
-        # self._join_foreign()
         self.after_init()
+
+    def before_init(self, kwargs):
+        pass
 
     def on_new(self, kwargs):
         pass
