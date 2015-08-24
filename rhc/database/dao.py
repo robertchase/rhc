@@ -214,7 +214,7 @@ class DAO(object):
             a lazy cache is maintained (query is done at most one time).
         '''
         if self.is_new:
-            return ()  # can't have children if we haven't been saved yet
+            return []  # can't have children if we haven't been saved yet
         child = cls.TABLE
         if child not in self._children:
             self._children[child] = [c.join(self) for c in cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)]
