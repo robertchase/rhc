@@ -25,7 +25,6 @@ import datetime
 import json
 import re
 import sys
-import time
 import traceback
 import types
 import urlparse
@@ -221,12 +220,9 @@ class LoggingRESTHandler(RESTHandler):
     def on_rest_data(self, request, *groups):
         request.id = LoggingRESTHandler.NEXT_REQUEST_ID = LoggingRESTHandler.NEXT_REQUEST_ID + 1
         log.info('request cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s', self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
-        log.debug('request cid=%d, rid=%d, headers=%s', self.id, request.id, request.http_headers)
-        log.debug('request cid=%d, rid=%d, content=%s', self.id, request.id, request.http_content[:100] if request.http_content else '')
 
     def on_rest_send(self, code, message, content, headers):
         log.debug('response cid=%d, code=%d, message=%s, headers=%s', self.id, code, message, headers)
-        log.debug('response cid=%d, t=%.3f, content=%s', self.id, float(time.time() - self.start), '' if not content else (content[:100] + '...') if len(content) > 100 else content)
 
     def on_rest_no_match(self):
         log.warning('no match cid=%d, method=%s, resource=%s', self.id, self.http_method, self.http_resource)
