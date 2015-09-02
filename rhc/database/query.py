@@ -102,26 +102,29 @@ class Query(object):
 
     def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, test=False):
 
-        stmt = self._build(arg, one, limit, offset, for_update)
         if test:
-            result = self._stmt
-        else:
-            result = []
-            cur = DB.cursor()
-            cur.execute(stmt, arg)
-            self._executed_stmt = cur._executed
-            for rs in cur:
-                s = {}
-                row = zip(self._column_names, rs)
-                for c in self._classes:
-                    l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
-                    val, row = row[:l], row[l:]
-                    o = c(**dict(val))
-                    s[c.TABLE] = o
-                    o._tables = s
-                    if len(s) == 1:
-                        result.append(o)
-            if one:
-                result = result[0] if len(result) else None
+            return self._build(arg, one, limit, offset, for_update)
+
+        result = [o for o in self._execute_g(arg, one, limit, offset, for_update)]
+        if one:
+            result = result[0] if len(result) else None
 
         return result
+
+    def execute_g(self, arg=None, one=False, limit=None, offset=None, for_update=False):
+
+        stmt = self._build(arg, one, limit, offset, for_update)
+        cur = DB.cursor()
+        cur.execute(stmt, arg)
+        self._executed_stmt = cur._executed
+        for rs in cur:
+            s = {}
+            row = zip(self._column_names, rs)
+            for c in self._classes:
+                l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
+                val, row = row[:l], row[l:]
+                o = c(**dict(val))
+                s[c.TABLE] = o
+                o._tables = s
+                yield o
+        return
