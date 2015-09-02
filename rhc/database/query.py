@@ -100,20 +100,17 @@ class Query(object):
         self._executed_stmt = None
         return stmt
 
-    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, test=False):
-
-        if test:
-            return self._build(arg, one, limit, offset, for_update)
-
-        result = [o for o in self._execute_g(arg, one, limit, offset, for_update)]
+    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, generator=False):
+        self._stmt = self._build(arg, one, limit, offset, for_update)
+        g = self._execute(self._stmt, arg)
+        if generator:
+            return g
+        result = [o for o in g]
         if one:
             result = result[0] if len(result) else None
-
         return result
 
-    def execute_g(self, arg=None, one=False, limit=None, offset=None, for_update=False):
-
-        stmt = self._build(arg, one, limit, offset, for_update)
+    def _execute(self, stmt, arg):
         cur = DB.cursor()
         cur.execute(stmt, arg)
         self._executed_stmt = cur._executed

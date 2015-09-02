@@ -244,7 +244,8 @@ class DAO(object):
 
     @classmethod
     def list(cls, where=None, args=None):
-        return cls.query().where(where).execute(tuple() if not args else args)
+        args = tuple() if not args else args
+        return cls.query().where(where).execute(arg=args, generator=True)
 
     @classmethod
     def query(cls):
