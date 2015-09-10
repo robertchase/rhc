@@ -21,6 +21,7 @@ def test3(handler, a, b):
 class Handler(RESTRequest):
     def __init__(self):
         self.http_content = ''
+        self.http_query = {}
         self.is_delayed = False
 
 

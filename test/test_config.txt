@@ -1,2 +1,4 @@
 server.host= local=host
 server.port =1000
+#server.host=whatever
+server.url=one\#two#three

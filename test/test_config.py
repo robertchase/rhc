@@ -45,11 +45,13 @@ class ConfigText(unittest.TestCase):
     def test_load(self):
         cfg = Config()
         cfg._define('server.host', 'localhost')
+        cfg._define('server.url')
         cfg._define('server.port', 100, validate_int)
         data = os.path.splitext(inspect.getfile(self.__class__))[0] + '.txt'
         cfg._load(data)
         self.assertEqual(cfg.server.host, 'local=host')
         self.assertEqual(cfg.server.port, 1000)
+        self.assertEqual(cfg.server.url, 'one\#two')
 
     def test_count_default(self):
         cfg = Config()

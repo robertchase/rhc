@@ -91,7 +91,8 @@ class Config (object):
          names and values.
 
       4. The _load function ignores anything including and following a '#'
-         character, thus allowing for comments.
+         character, thus allowing for comments. To prevent a '#' value from
+         starting a comment, escape it by preceeding it with a '\' character.
 
       5. The value parameter of the _define function is the initial value for
          the item, or the default value if the item is an Indexed Name.
@@ -155,7 +156,10 @@ class Config (object):
     def _load(self, filename):
         for lineno, line in enumerate(open(filename), start=1):
 
-            line = re.split('#', line)[0].strip()
+            m = re.match(r'(.*?[^\\])?#', line)  # look for first non-escaped comment indicator ('#')
+            if m:
+                line = m.group(1) if m.group(1) is not None else ''  # grab everything before the '#' (could be None if full-line comment)
+            line = line.strip()
             if 0 == len(line):
                 continue
 
@@ -164,13 +168,9 @@ class Config (object):
                 try:
                     self._set(match.group(1), match.group(2))
                 except Exception, e:
-                    raise Exception(
-                        'Error on line %d of %s: %s' % (lineno, filename,
-                                                        e))
+                    raise Exception('Error on line %d of %s: %s' % (lineno, filename, e))
             else:
-                raise ValueError(
-                    'Error on line %d of %s: invalid syntax' % (lineno,
-                                                                filename))
+                raise ValueError('Error on line %d of %s: invalid syntax' % (lineno, filename))
 
 
 class ConfigItem (object):
