@@ -51,7 +51,7 @@ class ConfigText(unittest.TestCase):
         cfg._load(data)
         self.assertEqual(cfg.server.host, 'local=host')
         self.assertEqual(cfg.server.port, 1000)
-        self.assertEqual(cfg.server.url, 'one\#two')
+        self.assertEqual(cfg.server.url, 'one#two')
 
     def test_count_default(self):
         cfg = Config()
