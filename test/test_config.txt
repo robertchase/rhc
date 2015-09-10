@@ -2,3 +2,5 @@ server.host= local=host
 server.port =1000
 #server.host=whatever
 server.url=one\#two#three
+server.akk=one\#asdf
+server.eek=one\#

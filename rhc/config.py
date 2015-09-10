@@ -159,7 +159,7 @@ class Config (object):
             m = re.match(r'(.*?[^\\])?#', line)  # look for first non-escaped comment indicator ('#')
             if m:
                 line = m.group(1) if m.group(1) is not None else ''  # grab everything before the '#' (could be None if full-line comment)
-                line = line.replace('\\#', '#')
+            line = line.replace('\#', '#')
             line = line.strip()
             if 0 == len(line):
                 continue
