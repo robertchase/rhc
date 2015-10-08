@@ -209,12 +209,26 @@ class _URLParser(object):
         self.resource = u.path + ('?%s' % u.query if u.query else '')
 
 
+def run(command, delay=.01, loop=0):
+    ''' helper function: loop through SERVER/TIMER until command.is_done is True '''
+
+    while not command.is_done:
+        SERVER.service(delay=delay, max_iterations=loop)
+        TIMERS.service()
+
+
 if __name__ == '__main__':
 
-    class MyCallback(RequestCallback):
+    class command(object):
 
         def __init__(self):
             self.complete = 0
+            request('https://www.google.com', self)
+            request('https://www.google.com/?gws_rd=ssl', self)
+
+        @property
+        def is_done(self):
+            return self.complete == 2
 
         def error(self, handler, reason):
             self.complete += 1
@@ -227,12 +241,4 @@ if __name__ == '__main__':
             print 'worked, rc=%s' % handler.http_status_code
             print handler.http_content
 
-    callback = MyCallback()
-
-    request('https://www.google.com', callback)
-    request('https://www.google.com/?gws_rd=ssl', callback)
-
-    while callback.complete != 2:
-        SERVER.service(1)
-        TIMERS.service()
-        print 'tick...'
+    run(command())
