@@ -23,8 +23,10 @@ THE SOFTWARE.
 '''
 from tcpsocket import BasicHandler
 
+from StringIO import StringIO
 import time
 import urlparse
+import gzip
 
 
 class HTTPHandler(BasicHandler):
@@ -89,6 +91,8 @@ class HTTPHandler(BasicHandler):
         self.__data = cache
 
     def _on_http_data(self):
+        if self.http_headers.get('Content-Encoding') == 'gzip':
+            self.http_content = gzip.GzipFile(fileobj=StringIO(self.http_content)).read()
         if self.http_headers.get('Content-Type', '').startswith('multipart'):
             self._multipart()
         self.on_http_data()
@@ -101,7 +105,7 @@ class HTTPHandler(BasicHandler):
         self.on_http_send(headers, content)
         super(HTTPHandler, self).send(headers + content)
 
-    def send(self, method='GET', host=None, resource='/', headers=None, content='', close=False):
+    def send(self, method='GET', host=None, resource='/', headers=None, content='', close=False, compress=False):
 
         self._http_method = method
 
@@ -117,6 +121,9 @@ class HTTPHandler(BasicHandler):
 
         if close:
             headers['Connection'] = 'close'
+
+        if compress:
+            headers['Accept-Encoding'] = 'gzip'
 
         if 'host' not in (k.lower() for k in headers):
             headers['Host'] = host if host else '%s:%s' % self.peer_address()

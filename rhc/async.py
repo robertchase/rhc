@@ -33,7 +33,7 @@ from tcpsocket import SERVER, SSLParam
 from timer import TIMERS
 
 
-def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, recv_len=None, event=None):
+def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, compress=False, recv_len=None, event=None):
     ''' make an async http request
 
         When operating a tcpserver.SERVER, use this method to make async HTTP requests that eventually
@@ -61,7 +61,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
 
     '''
     url = _URLParser(url)
-    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, recv_len=recv_len, event=event)
+    context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, compress=compress, recv_len=recv_len, event=event)
     ssl = SSLParam() if url.is_ssl else None
     SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
 
@@ -88,7 +88,7 @@ class RequestCallback(object):
 
 class _Context(object):
 
-    def __init__(self, host, resource, callback, content, headers, method, timeout, close, recv_len, event):
+    def __init__(self, host, resource, callback, content, headers, method, timeout, close, compress, recv_len, event):
 
         if headers is None:
             headers = {}
@@ -109,6 +109,7 @@ class _Context(object):
         self.method = method
         self.timeout = timeout
         self.close = close
+        self.compress = compress
         self.recv_len = recv_len
         self.event = {} if event is None else event
 
@@ -166,7 +167,7 @@ class _Handler(HTTPHandler):
         e_handler = ctx.event.get('on_ready')
         if e_handler:
             e_handler(self)
-        self.send(method=ctx.method, host=ctx.host, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close)
+        self.send(method=ctx.method, host=ctx.host, resource=ctx.resource, headers=ctx.headers, content=ctx.content, close=ctx.close, compress=ctx.compress)
 
     def on_http_headers(self):
         e_handler = self.context.event.get('on_http_headers')
