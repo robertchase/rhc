@@ -42,11 +42,12 @@ class _DB(object):
         else:
             self.stop_transaction()
 
-    def setup(self, **kwargs):
+    def setup(self, dirty=False, database_map=None, **kwargs):
         kwargs['autocommit'] = False
         kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED'
-        if kwargs.pop('dirty', False):
+        if dirty:
             kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED'
+        self.__database_map = database_map if database_map else {}  # {database_from_dao: actual_database_name, ...}
         self.__commit = kwargs.pop('commit', True)
         self.__close = kwargs.pop('close', False)
         self.__kwargs = kwargs
@@ -89,6 +90,10 @@ class _DB(object):
                 self._rollback()
             if self.__close:
                 self.close()
+
+    def database_map(self, tablename):
+        return self.__database_map.get(tablename, tablename)
+
 
 DB = _DB()
 

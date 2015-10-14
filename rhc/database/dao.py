@@ -62,7 +62,7 @@ class DAO(object):
     def FULL_TABLE_NAME(cls):
         table = '`%s`' % cls.TABLE
         if cls.DATABASE:
-            table = '`%s`.%s' % (cls.DATABASE, table)
+            table = '`%s`.%s' % (DB.database_map(cls.DATABASE), table)
         return table
 
     def before_init(self, kwargs):
