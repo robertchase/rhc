@@ -28,9 +28,9 @@ class Query(object):
 
     def __init__(self, table_class):
         self._classes = [table_class]
-        self._join = '`%s`' % table_class.TABLE
+        self._join = table_class.FULL_TABLE_NAME()
 
-        self._columns = ['`%s`.`%s`' % (table_class.TABLE, c) for c in table_class.FIELDS]
+        self._columns = ['%s.`%s`' % (table_class.FULL_TABLE_NAME(), c) for c in table_class.FIELDS]
         self._columns.extend('%s AS %s' % (c, n) for n, c in table_class.CALCULATED_FIELDS.items())
 
         self._column_names = [f for f in table_class.FIELDS]
@@ -48,7 +48,7 @@ class Query(object):
         return self
 
     def by_id(self):
-        self.where('`%s`.`id`=%%s' % self._classes[0].TABLE)
+        self.where('%s.`id`=%%s' % self._classes[0].FULL_TABLE_NAME())
         return self
 
     def join(self, table_class1, column1=None, table_class2=None, column2='id', outer=False):
@@ -68,9 +68,9 @@ class Query(object):
         self._classes.append(table_class1)
         if outer:
             self._join += ' OUTER'
-        self._join += ' JOIN `%s` ON `%s`.`%s` = `%s`.`%s`' % (table_class1.TABLE, table_class1.TABLE, column1, table_class2.TABLE, column2)
+        self._join += ' JOIN %s ON %s.`%s` = %s.`%s`' % (table_class1.FULL_TABLE_NAME(), table_class1.FULL_TABLE_NAME(), column1, table_class2.FULL_TABLE_NAME(), column2)
 
-        self._columns.extend('`%s`.`%s`' % (table_class1.TABLE, c) for c in table_class1.FIELDS)
+        self._columns.extend('%s.`%s`' % (table_class1.FULL_TABLE_NAME(), c) for c in table_class1.FIELDS)
         self._columns.extend('%s AS %s' % (c, n) for n, c in table_class1.CALCULATED_FIELDS.items())
 
         self._column_names.extend(table_class1.FIELDS)
@@ -114,6 +114,7 @@ class Query(object):
         cur = DB.cursor()
         cur.execute(stmt, arg)
         self._executed_stmt = cur._executed
+        primary_table = self._classes[0].TABLE
         for rs in cur:
             s = {}
             row = zip(self._column_names, rs)
@@ -123,5 +124,5 @@ class Query(object):
                 o = c(**dict(val))
                 s[c.TABLE] = o
                 o._tables = s
-                yield o
+            yield s[primary_table]
         return

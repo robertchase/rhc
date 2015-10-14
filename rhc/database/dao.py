@@ -31,6 +31,7 @@ from query import Query
 
 class DAO(object):
 
+    DATABASE = ''
     # TABLE = ''
     # FIELDS = ()
     CALCULATED_FIELDS = {}
@@ -56,6 +57,13 @@ class DAO(object):
         for n, v in kwargs.items():
             self.__dict__[n] = v
         self.after_init()
+
+    @classmethod
+    def FULL_TABLE_NAME(cls):
+        table = '`%s`' % cls.TABLE
+        if cls.DATABASE:
+            table = '`%s`.%s' % (cls.DATABASE, table)
+        return table
 
     def before_init(self, kwargs):
         pass
@@ -164,12 +172,12 @@ class DAO(object):
         args = [self.__dict__[f] for f in fields]
         if not hasattr(self, 'id'):
             new = True
-            stmt = 'INSERT INTO `' + self.TABLE + '` (' + ','.join('`' + f + '`' for f in fields) + ') VALUES (' + ','.join('%s' for n in range(len(fields))) + ')'
+            stmt = 'INSERT INTO ' + self.FULL_TABLE_NAME() + ' (' + ','.join('`' + f + '`' for f in fields) + ') VALUES (' + ','.join('%s' for n in range(len(fields))) + ')'
         else:
             if 'id' not in self.FIELDS:
                 raise Exception('DAO UPDATE requires that an "id" field be defined')
             new = False
-            stmt = 'UPDATE `' + self.TABLE + '` SET ' + ','.join(['`%s`=%%s' % n for n in fields]) + ' WHERE id=%s'
+            stmt = 'UPDATE ' + self.FULL_TABLE_NAME() + ' SET ' + ','.join(['`%s`=%%s' % n for n in fields]) + ' WHERE id=%s'
             args.append(self.id)
         with DB as cur:
             self._stmt = stmt
@@ -202,7 +210,7 @@ class DAO(object):
 
     def delete(self):
         with DB as cur:
-            cur.execute('DELETE from `%s` where `id`=%%s' % self.TABLE, self.id)
+            cur.execute('DELETE from %s where `id`=%%s' % self.FULL_TABLE_NAME(), self.id)
 
     def children(self, cls):
         '''
