@@ -631,6 +631,12 @@ class BasicHandler (object):
                     self.close_reason = 'send error on socket'
                     self.__close()
 
+            except Exception as e:
+                self.error = str(e)
+                self.on_send_error()
+                self.close_reason = 'send error on socket: %s' % self.error
+                self.__close()
+
             if count:
                 self.txByteCount += count
                 self.__sending = self.__sending[count:]
