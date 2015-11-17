@@ -105,6 +105,7 @@ class RESTResult(object):
                 302: 'Found',
                 400: 'Bad Request',
                 401: 'Unauthorized',
+                403: 'Forbidden',
                 404: 'Not Found',
             }.get(code, '')
         self.message = message
