@@ -54,7 +54,17 @@ class RESTRequest(object):
     def delay(self):
         self.is_delayed = True
 
-    def respond(self, result):
+    def respond(self, *args, **kwargs):
+        '''
+            the args/kwargs usually match the RESTResult __init__ method
+
+            in the case of a single argument, the RESTResult coerce method is called to deal with some
+            legacy ways of using this method.
+        '''
+        if len(kwargs) == 0 and len(args) == 1:
+            result = RESTResult.coerce(args[0])
+        else:
+            result = RESTResult(*args, **kwargs)
         if self.is_delayed:
             self.handler.rest_response(result)
         else:
@@ -78,11 +88,6 @@ class RESTRequest(object):
 class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
 
-        # coerce arguments (note that rest_response sets content)
-        if isinstance(content, int):
-            code, content = content, ''
-        elif isinstance(content, tuple) and len(content) == 2:
-            code, content = content
         self.code = code
 
         if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
@@ -112,10 +117,15 @@ class RESTResult(object):
         self.content = content
         self.headers = headers
 
-
-class RESTDelay(object):
-    ''' Indicate delayed response: see RESTHandler '''
-    pass
+    @classmethod
+    def coerce(cls, result):
+        if isinstance(result, cls):
+            return result           # already a RESTResult
+        if isinstance(result, int):
+            return cls(result)      # integer: treat as status code
+        if isinstance(result, tuple):
+            return cls(*result)     # tuple: treat as *args
+        return cls(content=result)  # otherwise, assume status code 200 with result being the content
 
 
 class RESTHandler(HTTPHandler):
@@ -131,8 +141,7 @@ class RESTHandler(HTTPHandler):
         is coerced to a RESTResult by the rest_response method, when an immediate
         response is available. In order to delay a response (to prevent
         blocking the server) a rest_handler can call the delay() function on the
-        request object or return a RESTDelay, followed by a future call to
-        rest_response. A RESTDelay will keep the socket open and set the
+        request object; the socket will remain open and set the
         is_delayed flag on the RESTRequest.
 
         Callback methods:
@@ -148,14 +157,12 @@ class RESTHandler(HTTPHandler):
                 request = RESTRequest(self)
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
-                if isinstance(result, RESTDelay):
-                    request.is_delayed = True
                 if request.is_delayed:
                     # rest_response() will be called later; remove Connection:close to keep connection around
                     if 'Connection' in self.http_headers:
                         del self.http_headers['Connection']
                 else:
-                    self.rest_response(result)
+                    self.rest_response(RESTResult.coerce(result))
             except Exception:
                 content = self.on_rest_exception(*sys.exc_info())
                 kwargs = dict(code=501, message='Internal Server Error')
@@ -174,8 +181,7 @@ class RESTHandler(HTTPHandler):
         pass
 
     def rest_response(self, result):
-        if not isinstance(result, RESTResult):
-            result = RESTResult(content=result)
+        result = RESTResult.coerce(result)
         self._rest_send(result.content, result.code, result.message, result.headers)
 
     def on_rest_exception(self, exception_type, exception_value, exception_traceback):
