@@ -134,9 +134,9 @@ class HTTPHandler(BasicHandler):
 
         self.__send(headers, content)
 
-    def send_server(self, content='', code=200, message='OK', headers=None):
+    def send_server(self, content='', code=200, message='OK', headers=None, close=False):
 
-        self.__http_close_on_complete = self.http_headers.get('Connection') == 'close'
+        self.__http_close_on_complete = True if close else self.http_headers.get('Connection') == 'close'
 
         if headers is None:
             headers = {}

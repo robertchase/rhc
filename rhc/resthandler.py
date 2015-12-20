@@ -65,10 +65,9 @@ class RESTRequest(object):
             result = RESTResult.coerce(args[0])
         else:
             result = RESTResult(*args, **kwargs)
-        if self.is_delayed:
-            self.handler.rest_response(result)
-        else:
-            return result
+        result.close = self.http_headers.get('Connection') == 'close'  # grab Connection from cached headers in case they have been cleared on the HTTPHandler
+        self.is_delayed = True  # treat as delayed to stop on_http_data from responding a second time in the non-delay case
+        self.handler.rest_response(result)
 
     @property
     def json(self):
@@ -89,6 +88,7 @@ class RESTResult(object):
     def __init__(self, code=200, content='', headers=None, message=None, content_type=None):
 
         self.code = code
+        self.close = False
 
         if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
             try:
@@ -157,11 +157,7 @@ class RESTHandler(HTTPHandler):
                 request = RESTRequest(self)
                 self.on_rest_data(request, *groups)
                 result = handler(request, *groups)
-                if request.is_delayed:
-                    # rest_response() will be called later; remove Connection:close to keep connection around
-                    if 'Connection' in self.http_headers:
-                        del self.http_headers['Connection']
-                else:
+                if not request.is_delayed:
                     self.rest_response(RESTResult.coerce(result))
             except Exception:
                 content = self.on_rest_exception(*sys.exc_info())
@@ -182,7 +178,7 @@ class RESTHandler(HTTPHandler):
 
     def rest_response(self, result):
         result = RESTResult.coerce(result)
-        self._rest_send(result.content, result.code, result.message, result.headers)
+        self._rest_send(result.content, result.code, result.message, result.headers, result.close)
 
     def on_rest_exception(self, exception_type, exception_value, exception_traceback):
         ''' handle Exception raised during REST processing
@@ -199,8 +195,8 @@ class RESTHandler(HTTPHandler):
         '''
         return None
 
-    def _rest_send(self, content=None, code=200, message='OK', headers=None):
-        args = {'code': code, 'message': message}
+    def _rest_send(self, content=None, code=200, message='OK', headers=None, close=False):
+        args = dict(code=code, message=message, close=close)
         if content:
             args['content'] = content
         if headers:
