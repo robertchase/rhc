@@ -307,7 +307,7 @@ class BasicHandler (object):
         self.context = context
         self.closed = False
         self.__closing = False
-        self.__sending = []
+        self.__sending = ''
         self.__socket = socket
         self.__incoming = True
 
@@ -596,7 +596,6 @@ class BasicHandler (object):
 
     # --- SEND
     def send(self, data):
-        ''' data is a string or a tuple of strings '''
         self._send(data)
 
     def _send(self, data=None):
@@ -611,19 +610,12 @@ class BasicHandler (object):
           the order of the data.
         '''
         if data:
-            '''
-                note that each chunk of data is buffered individually so that we don't
-                run into trouble trying to combine strings with different encoding.
-            '''
-            if isinstance(data, tuple):
-                self.__sending.extend(data)
-            else:
-                self.__sending.append(data)
+            self.__sending += data
 
         count = 0
         if len(self.__sending):
             try:
-                count = self.__socket.send(self.__sending[0])
+                count = self.__socket.send(self.__sending)
             except socket.error, e:
                 errnum, errmsg = e
 
@@ -647,10 +639,7 @@ class BasicHandler (object):
 
             if count:
                 self.txByteCount += count
-                if count == len(self.__sending[0]):
-                    self.__sending = self.__sending[1:]
-                else:
-                    self.__sending[0] = self.__sending[0][count:]
+                self.__sending = self.__sending[count:]
                 self.on_send(count)
 
                 if not self.more_to_send():
