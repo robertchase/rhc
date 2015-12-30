@@ -595,35 +595,40 @@ class BasicHandler (object):
     # ---
 
     # --- SEND
-    def send(self, data):
+    def send(self, *data):
         ''' data is a string or a tuple of strings '''
-        self._send(data)
+        self.__sending.extend(data)
+        self._send()
 
-    def _send(self, data=None):
+    def _send(self):
         '''
           Send data on socket.
 
           The socket.send function does not have to send any of the specified data.
-          This method buffers data and sends as much as socket.send will allow
-          each time the method is called. If socket.send only performs a partial
-          send, then calls to Server ().service () will re-call this method until
-          all data is sent. This method ensures that multiple calls will maintain
-          the order of the data.
-        '''
-        if data:
-            '''
-                note that each chunk of data is buffered individually so that we don't
-                run into trouble trying to combine strings with different encoding.
-            '''
-            if isinstance(data, tuple):
-                self.__sending.extend(data)
-            else:
-                self.__sending.append(data)
+          This method manages a buffer of data and sends as much as socket.send
+          will allow each time the method is called. If socket.send only performs
+          a partial send, then calls to SERVER.service() will re-call this method
+          until all data is sent. This method ensures that multiple calls will
+          maintain the order of the data.
 
+          Note that the data buffer is managed as a list of strings. If the string
+          types are encoded differently, as might be the case with http header and
+          content strings, then combining them might be a problem. The send method
+          allows for a string or a tuple of strings, and appends the data from
+          each new call to the end of the buffer as separate strings.
+        '''
         count = 0
         if len(self.__sending):
             try:
-                count = self.__socket.send(self.__sending[0])
+                while len(self.__sending):
+                    n = self.__socket.send(self.__sending[0])
+                    count += n
+                    if n == len(self.__sending[0]):
+                        self.__sending = self.__sending[1:]  # full string sent
+                    else:
+                        if n > 0:
+                            self.__sending[0] = self.__sending[0][n:]  # partial string sent
+                        break
             except socket.error, e:
                 errnum, errmsg = e
 
@@ -647,10 +652,6 @@ class BasicHandler (object):
 
             if count:
                 self.txByteCount += count
-                if count == len(self.__sending[0]):
-                    self.__sending = self.__sending[1:]
-                else:
-                    self.__sending[0] = self.__sending[0][count:]
                 self.on_send(count)
 
                 if not self.more_to_send():
