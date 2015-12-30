@@ -617,18 +617,15 @@ class BasicHandler (object):
           allows for a string or a tuple of strings, and appends the data from
           each new call to the end of the buffer as separate strings.
         '''
-        count = 0
         if len(self.__sending):
+            count = 0
             try:
                 while len(self.__sending):
-                    data = self.__sending[0]
+                    data = self.__sending.pop(0)
                     n = self.__socket.send(data)
                     count += n
-                    if n == len(data):
-                        self.__sending = self.__sending[1:]  # full string sent
-                    else:
-                        if n > 0:
-                            self.__sending[0] = data[n:]  # partial string sent
+                    if n != len(data):
+                        self.__sending.insert(0, data[n:])
                         break
             except socket.error, e:
                 errnum, errmsg = e
