@@ -596,7 +596,7 @@ class BasicHandler (object):
 
     # --- SEND
     def send(self, *data):
-        ''' data is a string or a tuple of strings '''
+        ''' data is one or more strings '''
         self.__sending.extend(data)
         self._send()
 
@@ -621,13 +621,14 @@ class BasicHandler (object):
         if len(self.__sending):
             try:
                 while len(self.__sending):
-                    n = self.__socket.send(self.__sending[0])
+                    data = self.__sending[0]
+                    n = self.__socket.send(data)
                     count += n
-                    if n == len(self.__sending[0]):
+                    if n == len(data):
                         self.__sending = self.__sending[1:]  # full string sent
                     else:
                         if n > 0:
-                            self.__sending[0] = self.__sending[0][n:]  # partial string sent
+                            self.__sending[0] = data[n:]  # partial string sent
                         break
             except socket.error, e:
                 errnum, errmsg = e
