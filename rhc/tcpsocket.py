@@ -596,6 +596,7 @@ class BasicHandler (object):
 
     # --- SEND
     def send(self, data):
+        ''' data is a string or a tuple of strings '''
         self._send(data)
 
     def _send(self, data=None):
@@ -610,7 +611,14 @@ class BasicHandler (object):
           the order of the data.
         '''
         if data:
-            self.__sending.append(data)
+            '''
+                note that each chunk of data is buffered individually so that we don't
+                run into trouble trying to combine strings with different encoding.
+            '''
+            if isinstance(data, tuple):
+                self.__sending.extend(data)
+            else:
+                self.__sending.append(data)
 
         count = 0
         if len(self.__sending):
