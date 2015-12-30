@@ -307,7 +307,7 @@ class BasicHandler (object):
         self.context = context
         self.closed = False
         self.__closing = False
-        self.__sending = ''
+        self.__sending = []
         self.__socket = socket
         self.__incoming = True
 
@@ -610,12 +610,12 @@ class BasicHandler (object):
           the order of the data.
         '''
         if data:
-            self.__sending += data
+            self.__sending.append(data)
 
         count = 0
         if len(self.__sending):
             try:
-                count = self.__socket.send(self.__sending)
+                count = self.__socket.send(self.__sending[0])
             except socket.error, e:
                 errnum, errmsg = e
 
@@ -639,7 +639,10 @@ class BasicHandler (object):
 
             if count:
                 self.txByteCount += count
-                self.__sending = self.__sending[count:]
+                if count == len(self.__sending[0]):
+                    self.__sending = self.__sending[1:]
+                else:
+                    self.__sending[0] = self.__sending[0][count:]
                 self.on_send(count)
 
                 if not self.more_to_send():
