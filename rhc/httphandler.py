@@ -52,6 +52,10 @@ class HTTPHandler(BasicHandler):
                         http_resource - resource from status line
                         http_query_string - unmodified query string
                         http_query - dict of query string
+                        charset - encoding from Content-Type header or None
+
+                        if charset:
+                            http_content: decoded http_content
 
                 on_http_send(self, headers, content) - useful for debugging
                 on_http_data(self) - when data is available
@@ -66,6 +70,15 @@ class HTTPHandler(BasicHandler):
         self.http_max_header_count = 100
 
         self.__http_close_on_complete = False
+
+    @property
+    def charset(self):
+        h = self.http_headers.get('Content-Type')
+        if h:
+            charset = [c.split('=')[1].strip() for c in h.split(';') if 'charset' in c]
+            if len(charset):
+                return charset[0]
+        return None
 
     def on_http_send(self, headers, content):
         pass
@@ -95,6 +108,8 @@ class HTTPHandler(BasicHandler):
             self.http_content = gzip.GzipFile(fileobj=StringIO(self.http_content)).read()
         if self.http_headers.get('Content-Type', '').startswith('multipart'):
             self._multipart()
+        if self.charset:
+            self.http_content = self.http_content.decode(self.charset)
         self.on_http_data()
 
     def on_send_complete(self):

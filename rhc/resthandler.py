@@ -90,10 +90,10 @@ class RESTResult(object):
         self.code = code
         self.close = False
 
-        if type(content) in (types.DictType, types.ListType, types.FloatType, types.BooleanType):
+        if isinstance(content, (types.DictType, types.ListType, types.FloatType, types.BooleanType, types.IntType)):
             try:
-                content = json.dumps(content, ensure_ascii=False)
-                content_type = 'application/json'
+                content = json.dumps(content)
+                content_type = 'application/json; charset=utf-8'
             except Exception:
                 content = str(content)
 
