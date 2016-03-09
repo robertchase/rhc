@@ -273,6 +273,10 @@ class HTTPHandler(BasicHandler):
 
     def _end_header(self):
 
+        # make sure lower-case versions of header names are available (for case-insensitive operation)
+        for n, v in self.http_headers.items():
+            self.http_headers[n.lower()] = v
+
         if getattr(self, '_http_method', None) == 'HEAD':  # this gets set if the send method is called
             self.__length = 0
             self.__state = self.__content
