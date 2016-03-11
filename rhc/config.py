@@ -96,6 +96,12 @@ class Config (object):
 
       5. The value parameter of the _define function is the initial value for
          the item, or the default value if the item is an Indexed Name.
+
+      6. If the env parameter is specified on the _define function, and an
+         env variable of this name is set, then the value of the env variable
+         overrides the 'value' parameter and any parmemter read from the config
+         file.
+
     '''
 
     def __init__(self):
@@ -105,7 +111,7 @@ class Config (object):
     def __getattr__(self, name):
         return getattr(self.__values, name)
 
-    def _define(self, name, value=None, validator=None, counter=None):
+    def _define(self, name, value=None, validator=None, counter=None, env=None):
         item = self.__values
         for part in name.split('.'):
             if not isinstance(item._value, dict):
@@ -118,6 +124,7 @@ class Config (object):
             raise AttributeError(
                 "Non-leaf node '%s' cannot be assigned" % part)
         item._validator = validator
+        item._env = os.getenv(env)
         if counter:
             if counter not in self.__direct:
                 raise AttributeError(
@@ -187,7 +194,7 @@ class ConfigItem (object):
             item = self._value[name]
             if item._counter or isinstance(item._value, dict):
                 return item
-            return item._value
+            return item._env if item._env else item._value
         raise AttributeError("'%s' not found" % name)
 
     def __getitem__(self, key):
