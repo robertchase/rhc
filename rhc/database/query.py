@@ -59,7 +59,9 @@ class Query(object):
             column1 - join column on table1, default = table2.name + '_id'
             table_class2 - DAO class of existing table to join, default is most recently added to query
             column2 - join column of table2, default = 'id'
-            outer - OUTER join indicator, default = False
+            outer - OUTER join indicator, if True or 'LEFT' then LEFT OUTER JOIN, if 'RIGHT' then RIGHT OUTER JOIN; default = False
+
+        Hint: joining from parent to children is the default direction
         '''
         if not table_class2:
             table_class2 = self._classes[-1]
@@ -67,7 +69,8 @@ class Query(object):
             column1 = '%s_id' % table_class2.TABLE
         self._classes.append(table_class1)
         if outer:
-            self._join += ' OUTER'
+            direction = 'LEFT' if outer is True else outer
+            self._join += ' %s OUTER' % direction
         self._join += ' JOIN %s ON %s.`%s` = %s.`%s`' % (table_class1.FULL_TABLE_NAME(), table_class1.FULL_TABLE_NAME(), column1, table_class2.FULL_TABLE_NAME(), column2)
 
         self._columns.extend('%s.`%s`' % (table_class1.FULL_TABLE_NAME(), c) for c in table_class1.FIELDS)
