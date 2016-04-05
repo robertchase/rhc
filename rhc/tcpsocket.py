@@ -117,8 +117,10 @@ class Server (object):
     def close(self):
         for h in self.__readable:
             h.close()
+        self.__readable = []
         for h in self.__writeable:
             h.close()
+        self.__writeable = []
 
     def add_server(self, port, handler, context=None, ssl=None):
         '''
