@@ -25,6 +25,7 @@ import datetime
 import json
 import re
 import sys
+import time
 import traceback
 import types
 import urlparse
@@ -218,7 +219,7 @@ class LoggingRESTHandler(RESTHandler):
         log.info('open: cid=%d, %s', self.id, self.name)
 
     def on_close(self):
-        log.info('close: cid=%s, %s: reason=%s', getattr(self, 'id', '.'), self.name, self.close_reason)
+        log.info('close: cid=%s, reason=%s, t=%.4f, rx=%d, tx=%d', getattr(self, 'id', '.'), self.close_reason, time.time() - self.start, self.rxByteCount, self.txByteCount)
 
     def on_rest_data(self, request, *groups):
         request.id = LoggingRESTHandler.NEXT_REQUEST_ID = LoggingRESTHandler.NEXT_REQUEST_ID + 1
