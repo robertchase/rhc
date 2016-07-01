@@ -81,7 +81,7 @@ class Query(object):
 
         return self
 
-    def _build(self, arg, one, limit, offset, for_update):
+    def _build(self, one, limit, offset, for_update):
         if one and limit:
             raise Exception('one and limit parameters are mutually exclusive')
         if one:
@@ -99,13 +99,14 @@ class Query(object):
             stmt += ' OFFSET %d' % int(offset)
         if for_update:
             stmt += ' FOR UPDATE'
-        self._stmt = stmt % arg if arg else stmt
-        self._executed_stmt = None
         return stmt
 
-    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, generator=False):
-        self._stmt = self._build(arg, one, limit, offset, for_update)
-        g = self._execute(self._stmt, arg)
+    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, generator=False, before_execute=None, after_execute=None):
+        self._stmt = self._build(one, limit, offset, for_update)
+        self._executed_stmt = None
+        if before_execute:
+            before_execute(self)
+        g = self._execute(self._stmt, arg, after_execute)
         if generator:
             return g
         result = [o for o in g]
@@ -113,10 +114,12 @@ class Query(object):
             result = result[0] if len(result) else None
         return result
 
-    def _execute(self, stmt, arg):
+    def _execute(self, stmt, arg, after_execute):
         cur = DB.cursor()
         cur.execute(stmt, arg)
         self._executed_stmt = cur._executed
+        if after_execute:
+            after_execute(self)
         primary_table = self._classes[0].TABLE
         for rs in cur:
             s = {}
