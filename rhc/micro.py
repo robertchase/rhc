@@ -203,7 +203,6 @@ class FSM(object):
 
     def __init__(self):
         self.state = self.state_init
-        self.setup = lambda *x: None
         self.teardown = lambda *x: None
 
     def handle(self, event, data, linenum):
@@ -217,7 +216,7 @@ class FSM(object):
         if event == 'config':
             self.config = _import(self.data)
         elif event == 'setup':
-            self.setup = _import(self.data)
+            _import(self.data)()
         elif event == 'teardown':
             self.teardown = _import(self.data)
         elif event == 'server':
@@ -288,7 +287,7 @@ def parse(s):
             sleep = fsm.config.loop.sleep
             max_iterations = fsm.config.loop.max_iterations
 
-    return namedtuple('control', 'sleep, max_iterations, setup, teardown')(sleep, max_iterations, fsm.setup, fsm.teardown)
+    return namedtuple('control', 'sleep, max_iterations, teardown')(sleep, max_iterations, fsm.teardown)
 
 
 def run(sleep, max_iterations):
@@ -308,6 +307,5 @@ if __name__ == '__main__':
 
     control = parse(open('micro'))
 
-    control.setup()
     run(control.sleep, control.max_iterations)
     control.teardown()
