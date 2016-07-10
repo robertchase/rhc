@@ -1,7 +1,7 @@
 '''
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 Robert H Chase
+Copyright (c) 2013-2016 Robert H Chase
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,254 +21,293 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+from collections import namedtuple
 from importlib import import_module
 import traceback
 import uuid
 
-from rhc.log import logmsg
+from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER, SSLParam
-from rhc.resthandler import RESTMapper, RESTHandler
 from rhc.timer import TIMERS
 
+import logging
+log = logging.getLogger(__name__)
 
-def _import(item_path):
+'''
+    Micro-service launcher
+
+    Use a configuration file (named 'micro' in the current directory) to set up and run a REST
+    service.
+
+    The configuration file is composed of single-line directives with parameters that define the
+    service. A simple example is this:
+
+        PORT 12345
+        ROUTE /ping?
+            GET handle.ping
+
+    This will listen on port 12345 for HTTP connections and route a GET on the exact url '/ping'
+    to the ping function inside handle.py. The server operates an rhc.resthandler.RESTHandler.
+
+    Directives:
+
+        Directives can be any case and can be preceeded by white space, if desired. Any time a
+        '#' is encoutered, it starts a comment, which is ignored.
+
+        CONFIG <path>
+
+            Specifiy the path to an rhc.config implementation. This is needed for the SERVER
+            directive.
+
+            If specified, the following configuration parameters control the operation of the
+            main loop:
+
+                loop.sleep - max number of milliseconds to sleep on socket poll, default 100
+                loop.max_iterations - max polls per service loop, default 100
+
+        SETUP <path>
+
+            Specify the path to a function to be run before entering the main loop.
+
+        TEARDOWN <path>
+
+            Specify the path to a function to be run after exiting the main loop.
+
+        PORT <port>
+
+            Specify a port on which to listen for HTTP connections. In order to to have more
+            control over the listening port (for instance, HTTPS) use the SERVER directive.
+
+            Multiple PORT directives can be specified.
+
+        SERVER <name>
+
+            Specify the section of a config file (see CONFIG) that defines a listening port's
+            attributes.
+
+            The following config attributes can be specified:
+
+                port - port to listen on, required
+                is_active - flag that enables/disables port, default=True
+                handler - path to socket handler, default=rhc.micro.MicroRESTHandler
+                          extend this handler, or one of the rhc.resthandlers for best results
+
+                ssl.is_active - flag that enables/disables ssl, default=False
+                ssl.keyfile - path to ssl keyfile
+                ssl.certfile - path to ssl certfile
+
+                http_max_content_length - self explanatory, default None (no enforced limit)
+                http_max_line_length - max header line length, default 10000 bytes
+                http_max_header_count - self explanatory, default 100
+                hide_stack_trace - don't send stack trace to caller, default True
+
+            Multiple SERVER directives can be specified.
+
+        ROUTE <pattern>
+
+           Specify a url pattern. This follows the rules of rhc.resthandler.RESTMapper.
+
+        GET <path>
+        POST <path>
+        PUT <path>
+        DELETE <path>
+
+            Specify the path to a function to handle an HTTP method.
+'''
+
+
+def _import(item_path, is_module=False):
+    if is_module:
+        return import_module(item_path)
     path, function = item_path.rsplit('.', 1)
     module = import_module(path)
     return getattr(module, function)
 
 
-def _load(f):
+class MicroContext(object):
 
-    result = dict(
-        routes=[],
-        context=None,
-        port=None,
-        max_content_length=None,
-        max_line_length=None,
-        max_header_count=None,
-        hide_stack_trace=True,
-        name='MICRO',
-        sleep=.1,
-        service_count=100,
-        first=None,
-    )
-
-    kwargs = None
-    for lnum, l in enumerate((ll for ll in (l.split('#', 1)[0].strip() for l in f.readlines()) if len(ll)), start=1):
-        if l.find(' ') == -1:
-            raise Exception("Line %d doesn't contain a space" % lnum)
-        rectyp, recval = l.split(' ', 1)
-        rectyp = rectyp.upper()
-        recval = recval.strip()
-
-        if rectyp == 'PORT':
-            kwargs = None
-            result['port'] = _import(recval)()
-        elif rectyp == 'CONTEXT':
-            result['context'] = _import(recval)()
-        elif rectyp == 'SLEEP':
-            result['sleep'] = float(_import(recval)())
-        elif rectyp == 'SERVICE_COUNT':
-            result['service_count'] = float(_import(recval)())
-
-        elif rectyp == 'ROUTE':
-            kwargs = {}
-            result['routes'].append((recval.strip(), kwargs))
-        elif rectyp in ('GET', 'PUT', 'POST', 'DELETE'):
-            if kwargs is None:
-                raise Exception("Line %d contains a %s that doesn't belong to a ROUTE" % (lnum, rectyp))
-            kwargs[rectyp.lower()] = _import(recval)
-
-        elif rectyp == 'INIT':
-            _import(recval)()
-        elif rectyp == 'FIRST':
-            result['first'] = _import(recval)
-
-        elif rectyp == 'NAME':
-            result['name'] = _import(recval)()
-
-        elif rectyp == 'MAX_CONTENT_LENGTH':
-            result['max_content_length'] = _import(recval)()
-        elif rectyp == 'MAX_LINE_LENGTH':
-            result['max_line_length'] = _import(recval)()
-        elif rectyp == 'MAX_HEADER_COUNT':
-            result['max_header_count'] = _import(recval)()
-
-        elif rectyp == 'HIDE_STACK_TRACE':
-            result['hide_stack_trace'] = bool(_import(recval)())
-
-        else:
-            raise Exception("Line %d is an invalid record type: %s" % (lnum, rectyp))
-
-    return result
+    def __init__(self, http_max_content_length, http_max_line_length, http_max_header_count, hide_stack_trace):
+        self.http_max_content_length = http_max_content_length
+        self.http_max_line_length = http_max_line_length
+        self.http_max_header_count = http_max_header_count
+        self.hide_stack_trace = hide_stack_trace
 
 
-class MicroRESTHandler(RESTHandler):
-
-    NEXT_ID = 0
-    NEXT_REQUEST_ID = 0
+class MicroRESTHandler(LoggingRESTHandler):
 
     def __init__(self, socket, context):
         super(MicroRESTHandler, self).__init__(socket, context)
-
-        if context.http_max_content_length:
-            self.http_max_content_length = context.http_max_content_length
-        if context.http_max_line_length:
-            self.http_max_line_length = context.http_max_line_length
-        if context.http_max_header_count:
-            self.http_max_header_count = context.http_max_header_count
-
+        context = context.context
+        self.http_max_content_length = context.http_max_content_length
+        self.http_max_line_length = context.http_max_line_length
+        self.http_max_header_count = context.http_max_header_count
         self.hide_stack_trace = context.hide_stack_trace
 
-    def on_open(self):
-        self.id = MicroRESTHandler.NEXT_ID = MicroRESTHandler.NEXT_ID + 1
-        logmsg(902, self.id, self.full_address())
-
-    def on_close(self):
-        logmsg(903, self.id, self.full_address())
-
-    def on_rest_data(self, request, *groups):
-        request.id = MicroRESTHandler.NEXT_REQUEST_ID = MicroRESTHandler.NEXT_REQUEST_ID + 1
-        logmsg(904, self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
-        logmsg(906, self.id, request.id, request.http_headers)
-        logmsg(907, self.id, request.id, request.http_content[:100] if request.http_content else '')
-
-    def on_rest_send(self, code, message, content, headers):
-        logmsg(908, self.id, code, message, headers)
-        logmsg(909, self.id, '' if not content else (content[:100] + '...') if len(content) > 100 else content)
-
-    def on_rest_no_match(self):
-        logmsg(910, self.id, self.http_method, self.http_resource)
-
-    def on_http_error(self):
-        logmsg(911, self.id, self.error)
-
     def on_rest_exception(self, exception_type, value, trace):
-        data = traceback.format_exc(trace)
         code = uuid.uuid4().hex
-        logmsg(905, code, data)
+        log.exception('exception encountered, code: %s', code)
         if self.hide_stack_trace:
             return 'oh, no! something broke. sorry about that.\nplease report this problem using the following id: %s\n' % code
-        return 'id: %s\n%s' % (code, data)
+        return traceback.format_exc(trace)
+
+
+class Route(object):
+
+    def __init__(self, pattern):
+        self.pattern = pattern
+        self.method = dict()
+
+    def add(self, method, path):
+        self.method[method] = _import(path)
+
+
+class Server(object):
+
+    def __init__(self, name, config):
+        self.name = name
+        context = MicroContext(
+            config.http_max_content_length if hasattr(config, 'http_max_content_length') else None,
+            config.http_max_line_length if hasattr(config, 'http_max_line_length') else 10000,
+            config.http_max_header_count if hasattr(config, 'http_max_header_count') else 100,
+            config.hide_stack_trace if hasattr(config, 'hide_stack_trace') else True,
+        )
+        self.mapper = RESTMapper(context)
+        self.is_active = config.is_active if hasattr(config, 'is_active') else True
+        self.port = int(config.port)
+        self.handler = _import(config.handler, is_module=True) if hasattr(config, 'handler') else MicroRESTHandler
+        self.ssl = None
+        if hasattr(config, 'ssl') and config.ssl.is_active:
+            self.ssl = SSLParam(
+                server_side=True,
+                keyfile=config.ssl.keyfile,
+                certfile=config.ssl.certfile,
+            )
+
+    def add_route(self, pattern):
+        if hasattr(self, 'route'):
+            self.mapper.add(self.route.pattern, **self.route.method)
+        self.route = Route(pattern)
+
+    def add_method(self, method, path):
+        self.route.add(method, path)
+
+    def done(self):
+        if self.is_active:
+            if hasattr(self, 'route'):
+                self.mapper.add(self.route.pattern, **self.route.method)
+            SERVER.add_server(self.port, self.handler, self.mapper, ssl=self.ssl)
+            log.info('listening on %s port %d', self.name, self.port)
+
+
+class FSM(object):
+
+    def __init__(self):
+        self.state = self.state_init
+        self.setup = lambda *x: None
+        self.teardown = lambda *x: None
+
+    def handle(self, event, data, linenum):
+        self.data = data
+        try:
+            self.state(event)
+        except Exception as e:
+            raise Exception('%s, line=%d' % (e.message, linenum))
+
+    def state_init(self, event):
+        if event == 'config':
+            self.config = _import(self.data)
+        elif event == 'setup':
+            self.setup = _import(self.data)
+        elif event == 'teardown':
+            self.teardown = _import(self.data)
+        elif event == 'server':
+            self.server = Server(self.data, getattr(self.config, self.data))
+            self.state = self.state_server
+        elif event == 'port':
+            self.server = Server('default', namedtuple('config', 'port')(int(self.data)))
+            self.state = self.state_server
+        elif event == 'done':
+            self.state = self.state_done
+        else:
+            raise Exception('invalid record ' + event)
+
+    def state_server(self, event):
+        if event == 'route':
+            self.server.add_route(self.data)
+            self.state = self.state_route
+        elif event == 'done':
+            self.server.done()
+            self.state = self.state_done
+        else:
+            raise Exception('invalid record ' + event)
+
+    def state_route(self, event):
+        if event in ('get', 'post', 'put', 'delete'):
+            self.server.add_method(event, self.data)
+        elif event == 'route':
+            self.server.add_route(self.data)
+        elif event == 'server':
+            self.server.done()
+            self.server = Server(self.data, getattr(self.config, self.data))
+            self.state = self.state_server
+        elif event == 'port':
+            self.server.done()
+            self.server = Server('default', namedtuple('config', 'port')(int(self.data)))
+            self.state = self.state_server
+        elif event == 'done':
+            self.server.done()
+            self.state = self.state_done
+        else:
+            raise Exception('invalid record ' + event)
+
+    def state_done(self, event):
+        raise Exception('unexpected event ' + event)
+
+
+def parse(s):
+
+    fsm = FSM()
+
+    for lnum, l in enumerate(s.readlines(), start=1):
+        l = l.split('#', 1)[0].strip()
+        if not l:
+            continue
+        try:
+            n, v = l.split(' ', 1)
+            n = n.lower()
+        except ValueError as e:
+            print 'parse error on line %d: %s' % (lnum, e.message)
+            raise
+        fsm.handle(n, v, lnum)
+    fsm.handle('done', None, lnum + 1)
+
+    sleep = 100
+    max_iterations = 100
+    if hasattr(fsm, 'config'):
+        if hasattr(fsm.config, 'loop'):
+            sleep = fsm.config.loop.sleep
+            max_iterations = fsm.config.loop.max_iterations
+
+    return namedtuple('control', 'sleep, max_iterations, setup, teardown')(sleep, max_iterations, fsm.setup, fsm.teardown)
+
+
+def run(sleep, max_iterations):
+    while True:
+        try:
+            SERVER.service(delay=sleep/1000.0, max_iterations=max_iterations)
+            TIMERS.service()
+        except KeyboardInterrupt:
+            log.info('Received shutdown command from keyboard')
+            break
+        except Exception:
+            log.exception('exception encountered')
 
 
 if __name__ == '__main__':
-    import argparse
-    from StringIO import StringIO
-    from rhc.log import LOG
+    logging.basicConfig(level=logging.DEBUG)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('control_file', type=open)
-    parser.add_argument('-m', '--messagefile')
-    parser.add_argument('-s', '--stdout', action='store_true', default=False)
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    args = parser.parse_args()
+    control = parse(open('micro'))
 
-    config = _load(args.control_file)
-
-    messages = StringIO('''
-        MESSAGE 900
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT Server listening on port %s
-
-        MESSAGE 901
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT Received shutdown command from keyboard
-
-        MESSAGE 902
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT open: cid=%d, %s
-
-        MESSAGE 903
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT close: cid=%d, %s
-
-        MESSAGE 904
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT request cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s
-
-        MESSAGE 905
-        LOG     WARNING
-        DISPLAY ALWAYS
-        TEXT exception encountered, code: %s
-        TEXT %s
-
-        MESSAGE 906
-        LOG     DEBUG
-        DISPLAY VERBOSE
-        TEXT request cid=%d, rid=%d, headers=%s
-
-        MESSAGE 907
-        LOG     DEBUG
-        DISPLAY VERBOSE
-        TEXT request cid=%d, rid=%d, content=%s
-
-        MESSAGE 908
-        LOG     DEBUG
-        DISPLAY VERBOSE
-        TEXT response cid=%d, code=%d, message=%s, headers=%s
-
-        MESSAGE 909
-        LOG     DEBUG
-        DISPLAY VERBOSE
-        TEXT response cid=%d, content=%s
-
-        MESSAGE 910
-        LOG     WARNING
-        DISPLAY ALWAYS
-        TEXT no match cid=%d, method=%s, resource=%s
-
-        MESSAGE 911
-        LOG     WARNING
-        DISPLAY ALWAYS
-        TEXT http error cid=%d: %s
-
-        MESSAGE 912
-        LOG     INFO
-        DISPLAY ALWAYS
-        TEXT server started (no listening port)
-
-    ''')
-    if args.messagefile:
-        messages = (messages, args.messagefile)
-    LOG.setup(messages, name=config['name'], stdout=args.stdout, verbose=args.verbose)
-
-    m = RESTMapper(context=config['context'])
-    for pattern, kwargs in config['routes']:
-        m.add(pattern, **kwargs)
-
-    m.http_max_content_length = config['max_content_length']
-    m.http_max_line_length = config['max_line_length']
-    m.http_max_header_count = config['max_header_count']
-    m.hide_stack_trace = config['hide_stack_trace']
-
-    listen = config.get('port')
-    if listen:
-        if isinstance(listen, tuple):
-            port = listen.port
-            listen.ssl_params['server_side'] = True
-            ssl = SSLParam(**listen.ssl_params)
-        else:
-            port = listen
-            ssl = None
-        SERVER.add_server(port, MicroRESTHandler, m, ssl=ssl)
-        logmsg(900, port)
-    else:
-        logmsg(912)
-
-    first = config.get('first')
-    if first:
-        first()
-    sleep = config['sleep']
-    service_count = config['service_count']
-    try:
-        while True:
-            SERVER.service(sleep, service_count)
-            TIMERS.service()
-    except KeyboardInterrupt:
-        logmsg(901)
+    control.setup()
+    run(control.sleep, control.max_iterations)
+    control.teardown()
