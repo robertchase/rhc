@@ -275,7 +275,7 @@ def parse(s):
             n, v = l.split(' ', 1)
             n = n.lower()
         except ValueError as e:
-            print 'parse error on line %d: %s' % (lnum, e.message)
+            log.warning('parse error on line %d: %s', lnum, e.message)
             raise
         fsm.handle(n, v, lnum)
     fsm.handle('done', None, lnum + 1)
