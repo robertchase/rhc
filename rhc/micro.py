@@ -195,7 +195,11 @@ class Server(object):
         if self.is_active:
             if hasattr(self, 'route'):
                 self.mapper.add(self.route.pattern, **self.route.method)
-            SERVER.add_server(self.port, self.handler, self.mapper, ssl=self.ssl)
+            try:
+                SERVER.add_server(self.port, self.handler, self.mapper, ssl=self.ssl)
+            except Exception:
+                log.error('unable to add %s server on port %d', self.name, self.port)
+                raise
             log.info('listening on %s port %d', self.name, self.port)
 
 
@@ -210,7 +214,7 @@ class FSM(object):
         try:
             self.state(event)
         except Exception as e:
-            raise Exception('%s, line=%d' % (e.message, linenum))
+            raise Exception('%s, line=%d' % (e, linenum))
 
     def state_init(self, event):
         if event == 'config':
