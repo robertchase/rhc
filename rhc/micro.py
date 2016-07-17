@@ -23,9 +23,11 @@ THE SOFTWARE.
 '''
 from collections import namedtuple
 from importlib import import_module
+import os.path
 import traceback
 import uuid
 
+import rhc.config as config
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER, SSLParam
 from rhc.timer import TIMERS
@@ -54,10 +56,32 @@ log = logging.getLogger(__name__)
         Directives can be any case and can be preceeded by white space, if desired. Any time a
         '#' is encoutered, it starts a comment, which is ignored.
 
-        CONFIG <path>
+        CONFIG name {default=<value>} {validate=int|bool|file} {env=<name>}
 
-            Specifiy the path to an rhc.config implementation. This is needed for the SERVER
-            directive.
+            Specify a single config file parameter.
+
+            Note: CONFIG records define values which can be used to configure the service by
+                  specifying configuration values in a file.  The config file is a file named 'config'
+                  which has records that set or override values defined in 'micro'.  After all CONFIG
+                  records are read from 'micro', the file 'config', if it exists, is loaded using
+                  rhc.config.Config._load.
+
+                  CONFIG (and CONFIG_SERVER) records must be specified before other micro directives.
+
+                  See rhc.config.Config.
+
+            The validate option will make sure that the value specified is valid according to these
+            rules:
+
+                int - must be an integer, or a string of digits; strings will be converted
+                bool - must be True, False, or a string (any case) spelling TRUE or FALSE
+                file - must be an existing file
+
+            The env option will attempt to read the value from the environment variable.
+
+            If an env is found, it takes precendence over other values. Values in the config
+            file take precedence over default values. If no default value is specified, the
+            value is None.
 
             If specified, the following configuration parameters control the operation of the
             main loop:
@@ -65,9 +89,29 @@ log = logging.getLogger(__name__)
                 loop.sleep - max number of milliseconds to sleep on socket poll, default 100
                 loop.max_iterations - max polls per service loop, default 100
 
+        CONFIG_SERVER <name> <port>
+
+            Specify a SERVER config section.
+
+            Generates default values for some of the config attributes mentioned under the
+            SERVER directive below. For instance:
+
+                CONFIG_SERVER private 10000
+
+            will create a config section with:
+
+                CONFIG private.port default=10000 validate=int
+                CONFIG private.is_active default=True validate=bool
+                CONFIG private.ssl.is_active default=False validate=bool
+                CONFIG private.ssl.keyfile validate=file
+                CONFIG private.ssl.certfile validate=file
+
+            other SERVER values can still be explicitly specified, if desired.
+
         SETUP <path>
 
-            Specify the path to a function to be run before entering the main loop.
+            Specify the path to a function to be run before entering the main loop. The function
+            must accept an rhc.config.Config object as the first parameter.
 
         TEARDOWN <path>
 
@@ -203,11 +247,57 @@ class Server(object):
             log.info('listening on %s port %d', self.name, self.port)
 
 
+def _config_server(cfg, line):
+    name, port = line.split()
+    cfg._define(name + '.port', value=int(port), validator=config.validate_int)
+    cfg._define(name + '.is_active', value=True, validator=config.validate_bool)
+    cfg._define(name + '.ssl.is_active', value=False, validator=config.validate_bool)
+    cfg._define(name + '.ssl.keyfile', validator=config.validate_file)
+    cfg._define(name + '.ssl.certfile', validator=config.validate_file)
+    return (
+        name + '.port',
+        name + '.is_active',
+        name + '.ssl.is_active',
+        name + '.ssl.keyfile',
+        name + '.ssl.certfile',
+    )
+
+
+def _config(cfg, line):
+    line = line.split(' ', 1)
+    if len(line) == 2:
+        name, line = line
+        kwargs = {n: v for n, v in (t.split('=', 1) for t in line.split())}
+        if 'validate' in kwargs:
+            if kwargs['validate'] == 'int':
+                f = config.validate_int
+            elif kwargs['validate'] == 'bool':
+                f = config.validate_bool
+            elif kwargs['validate'] == 'file':
+                f = config.validate_file
+            else:
+                raise Exception('%s is not a recognized validation type')
+            del kwargs['validate']
+            kwargs['validator'] = f
+        if 'default' in kwargs:
+            kwargs['value'] = kwargs['default']
+            del kwargs['default']
+            if 'validator' in kwargs:
+                kwargs['value'] = kwargs['validator'](kwargs['value'])
+    else:
+        name = line[0]
+        kwargs = {}
+    cfg._define(name, **kwargs)
+    return name
+
+
 class FSM(object):
 
     def __init__(self):
         self.state = self.state_init
         self.teardown = lambda *x: None
+        self.config = config.Config()
+        self.config_keys = []
 
     def handle(self, event, data, linenum):
         self.data = data
@@ -217,10 +307,11 @@ class FSM(object):
             raise Exception('%s, line=%d' % (e, linenum))
 
     def state_init(self, event):
-        if event == 'config':
-            self.config = _import(self.data)
+        if event in ('config', 'config_server'):
+            self.state = self.state_config  # switch states before processing event
+            self.state(event)
         elif event == 'setup':
-            _import(self.data)()
+            _import(self.data)(self.config)
         elif event == 'teardown':
             self.teardown = _import(self.data)
         elif event == 'server':
@@ -233,6 +324,17 @@ class FSM(object):
             self.state = self.state_done
         else:
             raise Exception('invalid record ' + event)
+
+    def state_config(self, event):
+        if event == 'config':
+            self.config_keys.append(_config(self.config, self.data))
+        elif event == 'config_server':
+            self.config_keys.extend(_config_server(self.config, self.data))
+        else:
+            if os.path.exists('config'):
+                self.config._load('config')  # process config file
+            self.state = self.state_init     # switch states before processing event
+            self.state(event)
 
     def state_server(self, event):
         if event == 'route':
@@ -267,7 +369,7 @@ class FSM(object):
         raise Exception('unexpected event ' + event)
 
 
-def parse(s):
+def parse(s, config_only=False):
 
     fsm = FSM()
 
@@ -281,8 +383,13 @@ def parse(s):
         except ValueError as e:
             log.warning('parse error on line %d: %s', lnum, e.message)
             raise
+        if config_only and n not in ('config', 'config_server'):
+            continue
         fsm.handle(n, v, lnum)
     fsm.handle('done', None, lnum + 1)
+
+    if config_only:
+        return namedtuple('config', 'config keys')(fsm.config, fsm.config_keys)
 
     sleep = 100
     max_iterations = 100
@@ -306,10 +413,21 @@ def run(sleep, max_iterations):
             log.exception('exception encountered')
 
 
+def load_config():
+    return parse(open('micro'), config_only=True).config
+
+
 if __name__ == '__main__':
+    import sys
+
     logging.basicConfig(level=logging.DEBUG)
 
-    control = parse(open('micro'))
-
-    run(control.sleep, control.max_iterations)
-    control.teardown()
+    if len(sys.argv) > 1 and sys.argv[1] == 'config':
+        cfg = parse(open('micro'), config_only=True)
+        for k in cfg.keys:
+            v = getattr(cfg.config, k)
+            print '%s=%s' % (k, v if v is not None else '')
+    else:
+        control = parse(open('micro'))
+        run(control.sleep, control.max_iterations)
+        control.teardown()
