@@ -109,7 +109,16 @@ class Config (object):
         self.__direct = {}
 
     def __getattr__(self, name):
+        if '.' in name:
+            return self._get(name)
         return getattr(self.__values, name)
+
+    def _get(self, name):
+        parts = name.split('.')
+        item = getattr(self, parts[0])
+        for part in parts[1:]:
+            item = getattr(item, part)
+        return item
 
     def _define(self, name, value=None, validator=None, counter=None, env=None):
         item = self.__values
