@@ -401,7 +401,7 @@ def parse(s, config_only=False):
     return namedtuple('control', 'sleep, max_iterations, teardown')(sleep, max_iterations, fsm.teardown)
 
 
-def run(sleep, max_iterations):
+def run(sleep=100, max_iterations=100):
     while True:
         try:
             SERVER.service(delay=sleep/1000.0, max_iterations=max_iterations)
