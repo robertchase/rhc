@@ -99,8 +99,9 @@ class DAO(object):
         ''' make sure field names are valid '''
         for f in kwargs:
             if f not in self.FIELDS:
-                if f not in self.CALCULATED_FIELDS:
-                    raise TypeError("Unexpected parameter: %s" % f)
+                if f not in self.PROPERTIES:
+                    if f not in self.CALCULATED_FIELDS:
+                        raise TypeError("Unexpected parameter: %s" % f)
 
     def _normalize(self, kwargs):
         ''' establish default or empty values for all fields '''
