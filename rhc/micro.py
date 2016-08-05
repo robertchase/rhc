@@ -424,9 +424,13 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 1 and sys.argv[1] == 'config':
         cfg = parse(open('micro'), config_only=True)
-        for k in cfg.keys:
-            v = getattr(cfg.config, k)
-            print '%s=%s' % (k, v if v is not None else '')
+        if len(sys.argv) > 2:
+            v = cfg.config._get(sys.argv[2])
+            print v if v else ''
+        else:
+            for k in cfg.keys:
+                v = getattr(cfg.config, k)
+                print '%s=%s' % (k, v if v is not None else '')
     else:
         control = parse(open('micro'))
         run(control.sleep, control.max_iterations)
