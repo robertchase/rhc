@@ -157,6 +157,11 @@ log = logging.getLogger(__name__)
         DELETE <path>
 
             Specify the path to a function to handle an HTTP method.
+
+        IMPORT <path>
+
+            import directives from another micro file. the imported file is interpreted
+            as though it were inline.
 '''
 
 
@@ -299,12 +304,12 @@ class FSM(object):
         self.config = config.Config()
         self.config_keys = []
 
-    def handle(self, event, data, linenum):
+    def handle(self, event, data, fname, linenum):
         self.data = data
         try:
             self.state(event)
         except Exception as e:
-            raise Exception('%s, line=%d' % (e, linenum))
+            raise Exception('%s, line=%d of %s' % (e, linenum, fname))
 
     def state_init(self, event):
         if event in ('config', 'config_server'):
@@ -369,11 +374,34 @@ class FSM(object):
         raise Exception('unexpected event ' + event)
 
 
+def _load(fname, files=None, lines=None):
+
+    if files is None:
+        files = []
+    if lines is None:
+        lines = []
+
+    if fname in files:
+        raise Exception('a micro file (in this case, %s) cannot be recursively imported' % fname)
+    files.append(fname)
+
+    for n, l in enumerate(open(fname).readlines(), start=1):
+        ll = l.split()
+        if len(ll) > 1 and ll[0].lower() == 'import':
+            import_fname = ' '.join(ll[1:])
+            _load(import_fname, files, lines)
+        else:
+            lines.append((fname, n, l))
+    return lines
+
+
 def parse(s, config_only=False):
+
+    lines = _load(s)
 
     fsm = FSM()
 
-    for lnum, l in enumerate(s.readlines(), start=1):
+    for fname, lnum, l in lines:
         l = l.split('#', 1)[0].strip()
         if not l:
             continue
@@ -381,12 +409,12 @@ def parse(s, config_only=False):
             n, v = l.split(' ', 1)
             n = n.lower()
         except ValueError as e:
-            log.warning('parse error on line %d: %s', lnum, e.message)
+            log.warning('parse error on line %d of %s: %s', lnum, fname, e.message)
             raise
         if config_only and n not in ('config', 'config_server'):
             continue
-        fsm.handle(n, v, lnum)
-    fsm.handle('done', None, lnum + 1)
+        fsm.handle(n, v, fname, lnum)
+    fsm.handle('done', None, fname, lnum + 1)
 
     if config_only:
         return namedtuple('config', 'config keys')(fsm.config, fsm.config_keys)
@@ -414,7 +442,7 @@ def run(sleep=100, max_iterations=100):
 
 
 def load_config():
-    return parse(open('micro'), config_only=True).config
+    return parse('micro', config_only=True).config
 
 
 if __name__ == '__main__':
@@ -423,7 +451,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     if len(sys.argv) > 1 and sys.argv[1] == 'config':
-        cfg = parse(open('micro'), config_only=True)
+        cfg = parse('micro', config_only=True)
         if len(sys.argv) > 2:
             v = cfg.config._get(sys.argv[2])
             print v if v else ''
@@ -432,6 +460,11 @@ if __name__ == '__main__':
                 v = getattr(cfg.config, k)
                 print '%s=%s' % (k, v if v is not None else '')
     else:
-        control = parse(open('micro'))
-        run(control.sleep, control.max_iterations)
-        control.teardown()
+        try:
+            control = parse('micro')
+        except Exception as e:
+            control = None
+            print e
+        if control:
+            run(control.sleep, control.max_iterations)
+            control.teardown()
