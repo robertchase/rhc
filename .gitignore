@@ -2,3 +2,4 @@
 MANIFEST
 dist/
 .ropeproject
+.DS_Store

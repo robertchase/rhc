@@ -1,0 +1,22 @@
+STATE init
+    EVENT state state
+
+STATE state
+    ENTER state
+    EVENT error error
+    EVENT enter
+        ACTION enter
+    EVENT exit
+        ACTION exit
+    EVENT event event
+    EVENT state state
+
+STATE event
+    ENTER event
+    EVENT error error
+    EVENT action
+        ACTION action
+    EVENT event event
+    EVENT state state
+
+STATE error
