@@ -9,20 +9,20 @@ class Parser(object):
         self.state = None
         self.event = None
         self.actions = {}
-        self.fsm = create_machine(dict(
+        self.fsm = create_machine(
             action=self.act_action,
             enter=self.act_enter,
             event=self.act_event,
             exit=self.act_exit,
             state=self.act_state,
-        ))
+        )
         self.fsm.state = 'init'
 
     def __str__(self):
         states = self.states
         d = 'from rhc.fsm.FSM import STATE, EVENT, FSM\n'
         d += '\n'.join('# ' + a for a in sorted(self.actions))
-        d += '\ndef create(actions):\n'
+        d += '\ndef create(**actions):\n'
         d += '\n'.join(self.define(s) for s in states.values())
         d += '\n' + '\n'.join(self.set_events(s) for s in states.values())
         d += '\n  return FSM([' + ','.join('S_' + s for s in states) + '])'

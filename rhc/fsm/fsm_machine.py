@@ -4,7 +4,7 @@ from FSM import STATE, EVENT, FSM
 # event
 # exit
 # state
-def create(actions):
+def create(**actions):
   S_init=STATE('init')
   S_error=STATE('error')
   S_state=STATE('state',enter=actions['state'])
