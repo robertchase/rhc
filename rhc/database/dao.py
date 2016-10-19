@@ -276,3 +276,13 @@ class DAO(object):
             self._tables[obj.TABLE] = obj
             obj._tables = self._tables
         return self
+
+    @classmethod
+    def count(cls, where=None, arg=None):
+        query = 'SELECT COUNT(*) FROM `%s`' % cls.TABLE
+        if where:
+            query += ' WHERE ' + where
+        with DB as cur:
+            cur.execute(query, arg)
+            cnt = cur.fetchone()[0]
+        return cnt
