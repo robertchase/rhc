@@ -52,6 +52,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             recv_len: read buffer size (default = BasicHandler.RECV_LEN)
             event   : dictionary of Handler event callback routines
 
+                      on_init(handler)
                       on_open(handler)
                       on_close(handler)
                       on_handshake(handler, cert): bool, True means keep going
@@ -139,6 +140,11 @@ class _Handler(HTTPHandler):
     def on_timeout(self):
         self._error('timeout')
         self.close()
+
+    def on_init(self):
+        e_handler = self.context.event.get('on_init')
+        if e_handler:
+            e_handler(self)
 
     def on_open(self):
         self.context.timer.re_start()

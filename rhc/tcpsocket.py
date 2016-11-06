@@ -329,6 +329,11 @@ class BasicHandler (object):
         self.__ssl_want_read = False
         self.__ssl_want_write = False
 
+        self.on_init()
+
+    def on_init(self):
+        pass
+
     def get_ssl_peer_cert(self):
         return self.__ssl_peer_cert
 
