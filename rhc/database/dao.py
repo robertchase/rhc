@@ -183,7 +183,12 @@ class DAO(object):
         with DB as cur:
             self._stmt = stmt
             self._executed_stmt = None
-            cur.execute(stmt, args)
+            try:
+                cur.execute(stmt, args)
+            except Exception:
+                for n in self.JSON_FIELDS:
+                    setattr(self, n, cache[n])
+                raise
             self._executed_stmt = cur._executed
         if new:
             if 'id' in self.FIELDS:
