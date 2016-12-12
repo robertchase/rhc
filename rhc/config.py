@@ -134,6 +134,8 @@ class Config (object):
                 "Non-leaf node '%s' cannot be assigned" % part)
         item._validator = validator
         item._env = os.getenv(env)
+        if item._env and validator:
+            item._env = validator(item._env)
         if counter:
             if counter not in self.__direct:
                 raise AttributeError(
@@ -203,7 +205,7 @@ class ConfigItem (object):
             item = self._value[name]
             if item._counter or isinstance(item._value, dict):
                 return item
-            return item._env if item._env else item._value
+            return item._env if item._env is not None else item._value
         raise AttributeError("'%s' not found" % name)
 
     def __getitem__(self, key):
@@ -224,9 +226,11 @@ def validate_bool(value):
 
 
 def validate_file(value):
+    if len(value) == 0:
+        return value
     if os.path.isfile(value):
         return value
-    raise Exception('%s not found' % value)
+    raise Exception("file '%s' not found" % value)
 
 
 class Stub(object):
