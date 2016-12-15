@@ -160,18 +160,25 @@ class DAO(object):
     def on_json(self, json):
         return json
 
-    def save(self):
+    def insert(self, id=None):
+        ''' insert usually happens automatically when id is NOT specified; this is for the unusual case where you want to specifiy the primary key yourself '''
+        if id is not None:
+            self.id = id
+        return self.save(insert=True)
+
+    def save(self, insert=False):
         cache = {}
         for n in self.JSON_FIELDS:
             v = cache[n] = getattr(self, n)
             if v is not None:
                 setattr(self, n, json.dumps(self.on_json_save(n, v)))
         self.before_save()
-        if not hasattr(self, 'id'):
+        if insert or not hasattr(self, 'id'):
             self.before_insert()
-        fields = [f for f in self.FIELDS if f != 'id']
+        fields = [f for f in self.FIELDS if f != 'id'] + ([] if not insert else ['id'])
         args = [self.__dict__[f] for f in fields]
-        if not hasattr(self, 'id'):
+
+        if insert or not hasattr(self, 'id'):
             new = True
             stmt = 'INSERT INTO ' + self.FULL_TABLE_NAME() + ' (' + ','.join('`' + f + '`' for f in fields) + ') VALUES (' + ','.join('%s' for n in range(len(fields))) + ')'
         else:
@@ -191,7 +198,7 @@ class DAO(object):
                 raise
             self._executed_stmt = cur._executed
         if new:
-            if 'id' in self.FIELDS:
+            if not insert and 'id' in self.FIELDS:
                 setattr(self, 'id', cur.lastrowid)
             self.after_insert()
         self.after_save()
