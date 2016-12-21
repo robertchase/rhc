@@ -146,6 +146,8 @@ class DAO(object):
     def __setattr__(self, name, value):
         if name.startswith('_') or name in self.FIELDS or name in self.PROPERTIES:
             self.__dict__[name] = value
+        elif isinstance(self.__class__.__dict__[name], property):
+            object.__setattr__(self, name, value)
         else:
             raise AttributeError('%s is not a valid field name' % name)
 
