@@ -94,6 +94,13 @@ class _DB(object):
     def database_map(self, tablename):
         return self.__database_map.get(tablename, tablename)
 
+    @property
+    def tables(self):
+        """Return a list of table names from the connected db."""
+        cur = self.cursor()
+        cur.execute('SHOW TABLES')
+        return [tablename for (tablename,) in cur]
+
 
 DB = _DB()
 
