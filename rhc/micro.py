@@ -259,13 +259,14 @@ def _config_server(cfg, line):
     cfg._define(name + '.ssl.is_active', value=False, validator=config.validate_bool)
     cfg._define(name + '.ssl.keyfile', validator=config.validate_file)
     cfg._define(name + '.ssl.certfile', validator=config.validate_file)
-    return (
+    keys = (
         name + '.port',
         name + '.is_active',
         name + '.ssl.is_active',
         name + '.ssl.keyfile',
         name + '.ssl.certfile',
     )
+    return namedtuple('Server', 'name port keys')(name, port, keys)
 
 
 def _config(cfg, line):
@@ -303,6 +304,7 @@ class FSM(object):
         self.teardown = lambda *x: None
         self.config = config.Config()
         self.config_keys = []
+        self.ports = []
 
     def handle(self, event, data, fname, linenum):
         self.data = data
@@ -321,6 +323,9 @@ class FSM(object):
             self.teardown = _import(self.data)
         elif event == 'server':
             self.server = Server(self.data, getattr(self.config, self.data))
+            if self.server.port in self.ports:
+                raise Exception('port already associated with another SERVER')
+            self.ports.append(self.server.port)
             self.state = self.state_server
         elif event == 'port':
             self.server = Server('default', namedtuple('config', 'port')(int(self.data)))
@@ -334,7 +339,11 @@ class FSM(object):
         if event == 'config':
             self.config_keys.append(_config(self.config, self.data))
         elif event == 'config_server':
-            self.config_keys.extend(_config_server(self.config, self.data))
+            server = _config_server(self.config, self.data)
+            self.config_keys.extend(server.keys)
+            if server.port in self.ports:
+                raise Exception('port already associated with another SERVER')
+            self.ports.append(server.port)
         else:
             if os.path.exists('config'):
                 self.config._load('config')  # process config file
