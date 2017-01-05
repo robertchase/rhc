@@ -390,7 +390,8 @@ def _load(fname, files=None, lines=None):
         ll = l.split()
         if len(ll) > 1 and ll[0].lower() == 'import':
             import_fname = ' '.join(ll[1:])
-            import_fname = os.path.join(dir_path, import_fname)
+            if not import_fname.startswith('/'):  # path is relative
+                import_fname = os.path.join(dir_path, import_fname)
             _load(import_fname, files, lines)
         else:
             lines.append((fname, n, l))
