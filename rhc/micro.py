@@ -382,7 +382,7 @@ class FSM(object):
 
 
 def _load(fname, files=None, lines=None):
-
+    """Recursively load files."""
     if files is None:
         files = []
     if lines is None:
@@ -391,11 +391,14 @@ def _load(fname, files=None, lines=None):
     if fname in files:
         raise Exception('a micro file (in this case, %s) cannot be recursively imported' % fname)
     files.append(fname)
+    dir_path = os.path.dirname(fname)
 
     for n, l in enumerate(open(fname).readlines(), start=1):
         ll = l.split()
         if len(ll) > 1 and ll[0].lower() == 'import':
             import_fname = ' '.join(ll[1:])
+            if not import_fname.startswith(os.path.sep):  # path is relative
+                import_fname = os.path.join(dir_path, import_fname)
             _load(import_fname, files, lines)
         else:
             lines.append((fname, n, l))
