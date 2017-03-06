@@ -32,68 +32,6 @@ class ENOENTException(Exception):
     pass
 
 
-class Client(object):
-
-    '''
-      Synchronous client class for easy client creation.
-
-      The connect is tried immediatedly on creation. The read and write functions
-      poll until they are satisfied.
-    '''
-    def __init__(self, host, port):
-        self.connection = None
-
-        class Context(object):
-            def __init__(self):
-                self.handler = None
-                self.done = False
-
-        class Handler(BasicHandler):
-            def __init__(self, socket, context=None):
-                super(Handler, self).__init__(socket, context)
-                self.data = ''
-
-            def on_ready(self):
-                self.context.done = True
-                self.context.handler = self
-
-            def on_close(self):
-                self.context.done = True
-
-            def on_fail(self):
-                raise Exception('Connection to %s failed: %s' % (self.name, self.error))
-
-            def on_data(self, data):
-                self.data += data
-
-        ctx = Context()
-        Server().add_connection((host, port), Handler, ctx)
-        while not ctx.done:
-            Server().service()
-            time.sleep(.01)
-
-        self.connection = ctx.handler
-
-    def write(self, data):
-        self.connection.send(data)
-        while self.connection.more_to_send():
-            if self.connection.closed:
-                raise Exception('Connection closed')
-            Server().service()
-            time.sleep(.01)
-
-    def read(self, length=0):
-        if length == 0:
-            length = len(self.connection.data)
-        while length > len(self.connection.data):
-            if self.connection.closed:
-                raise Exception('Connection closed')
-            Server().service()
-            time.sleep(.01)
-        ret, self.connection.data = self.connection.data[:length], self.connection.data[length:]
-        return ret
-
-
 class Server (object):
 
     '''
@@ -113,6 +51,38 @@ class Server (object):
         self.__readable = []
         self.__writeable = []
         self.__handshake = []
+
+        self._read_wait = {}
+        self._write_wait = {}
+
+    def _register(self, sock, is_read, callback):
+        if is_read:
+            self._read_wait[sock] = callback
+            if sock in self._write_wait:
+                del self._write_wait[sock]
+        else:
+            self._write_wait[sock] = callback
+            if sock in self._read_wait:
+                del self._read_wait[sock]
+
+    def _unregister(self, sock):
+        if sock in self._read_wait:
+            del self._read_wait[sock]
+        elif sock in self._write_wait:
+            del self._write_wait[sock]
+
+    def _new_service(self, timeout):
+        processed = False
+        read_wait = [s for s in self._read_wait.keys()]
+        write_wait = [s for s in self._write_wait.keys()]
+        readable, writeable, other = select.select(read_wait, write_wait, [], timeout)
+        for s in readable:
+            processed = True
+            self._read_wait[s]()
+        for s in writeable:
+            processed = True
+            self._write_wait[s]()
+        return processed
 
     def close(self):
         for h in self.__readable:
@@ -147,24 +117,27 @@ class Server (object):
         '''
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setblocking(0)
+        h = handler(s, context)
+        h.__incoming = False
+        h._network = self
+        h.name = '%s:%s' % address
+        if is_ssl:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            h._ssl_ctx = ssl_ctx
         try:
             s.connect(address)
         except socket.error, e:
             error, errmsg = e
-            if errno.EINPROGRESS != error:
-                # --- temporarily construct a handler in order to fail/close it
-                h = handler(0, context)
-                h.name = '%s:%s' % address
-                h.error = str(e)
+            if errno.EINPROGRESS == error:
+                self._register(s, False, h._on_delayed_connect)
+            else:
                 h.on_fail()
-                h.close_reason = 'failed to setup connection'
-                h.on_close()
-                return
-        h = handler(s, context)
-        h.name = '%s:%s' % address
-        if ssl:
-            h.set_ssl(ssl)
-        self.__writeable.append(h)
+                h.close_reason = 'failed to setup connection: %s' % errmsg
+                h.close()
+        else:
+            h._on_connect()
 
     def _service(self, delay):
         '''
@@ -312,6 +285,8 @@ class BasicHandler (object):
         self.__sending = []
         self.__socket = socket
         self.__incoming = True
+        self._ssl_ctx= None
+        self._network = None
 
         self.name = 'BasicHandler::init'
         self.error = None
@@ -553,6 +528,129 @@ class BasicHandler (object):
         '''
         pass
     # --- Callback Methods ----------------------------------------------
+    # ---
+    # ---
+
+
+    # ---
+    # ---
+    # --- I/O
+    def _on_delayed_connect(self):
+        try:
+            rc = self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if rc != 0:
+                self.error = os.strerror(rc)
+        except Exception as e:
+            self.error = str(e)
+            rc = 1
+        if rc == 0:
+            self._on_connect()
+        else:
+            self.on_fail()
+            self.close_error = 'failed to connect'
+            self.close()
+
+    def _on_connect(self):
+        self.on_open()
+        self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # bye bye NAGLE
+        if self._ssl_ctx:
+            try:
+                self._socket = self._ssl_ctx.wrap_socket(self._socket, server_side=self.is_inbound, do_handshake_on_connect=False)
+            except Exception as e:
+                self.close_reason = str(e)
+                self.close()
+            else:
+                self._do_handshake()
+        else:
+            self._on_ready()
+
+    def _do_handshake(self):
+        try:
+            self._socket.do_handshake()
+        except ssl.SSLWantReadError:
+            self._network._register(self._socket, True, self._do_handshake)
+        except ssl.SSLWantWriteError:
+            self._network._register(self._socket, False, self._do_handshake)
+        except Exception as e:
+            self.on_failed_handshake(str(e))
+            self.close('failed ssl handshake')
+        else:
+            self.peer_cert = self._socket.getpeercert()
+            if not self.on_handshake(self.peer_cert):
+                self.close_reason = 'failed ssl certificate check'
+                self.close()
+                return
+            self._on_ready()
+
+    def _on_ready(self):
+        self._network._register(self._socket, True, self._do_read)
+        self.on_ready()
+
+    def _do_read(self):
+        try:
+            data = self._socket.recv(self.RECV_LEN)
+        except ssl.SSLWantReadError:
+            self._network._register(self._socket, True, self._do_handshake)
+        except ssl.SSLWantWriteError:
+            self._network._register(self._socket, False, self._do_handshake)
+        except socket.error as e:
+            errnum, errmsg = e
+            if errnum == errno.ENOENT:
+                pass  # apparently this can happen. http://www.programcreek.com/python/example/374/errno.ENOENT says it comes from the SSL library.
+            else:
+                self.close_reason = 'recv error on socket: %s' % errmsg
+                self.close()
+        except Exception as e:
+            self.close_reason = 'recv error on socket: %s' % str(e)
+            self.close()
+        else:
+            if len(data) == 0:
+                self.close_reason = 'remote close'
+                self.close()
+            else:
+                # RHC: RIGHT HERE
+                self.rx_count += len(data)
+                self.on_data(data)
+                if self._is_pending:
+                    self._network._set_pending(self._do_read)  # give buffered ssl data another chance
+
+    def _do_write(self, data=None):
+        data = data if data is not None else self._sending
+        if not data:
+            self.close('logic error in handler')
+            return
+        try:
+            l = self._sock.send(data)
+        except ssl.SSLWantReadError:
+            self._register(selectors.EVENT_READ, self._do_write)
+        except ssl.SSLWantWriteError:
+            self._register(selectors.EVENT_WRITE, self._do_write)
+        except socket.error as e:
+            errnum, errmsg = e
+            if errnum in (errno.EINTR, errno.EWOULDBLOCK):
+                self.on_send_error(errmsg)  # not fatal
+                self._sending = data
+                self._register(selectors.EVENT_WRITE, self._do_write)
+            else:
+                self.close('send error on socket: %s' % errmsg)
+        except Exception as e:
+            self.close('send error on socket: %s' % str(e))
+        else:
+            self.tx_count += l
+            if l == len(data):
+                self._sending = b''
+                self._register(selectors.EVENT_READ, self._do_read)
+                self.on_send_complete()
+            else:
+                '''
+                    we couldn't send all the data. buffer the remainder in self._sending and start
+                    waiting for the socket to be writable again (EVENT_WRITE).
+                '''
+                self._sending = data[l:]
+                self._register(selectors.EVENT_WRITE, self._do_write)
+
+
+    # --- I/O
     # ---
     # ---
 
