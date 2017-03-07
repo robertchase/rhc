@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 import errno
+import os
 import select
 import socket
 import ssl
@@ -71,8 +72,13 @@ class Server (object):
         elif sock in self._write_wait:
             del self._write_wait[sock]
 
-    def _new_service(self, timeout):
+    def _set_pending(self, callback):
+        self._pending.append(callback)
+
+    def _service(self, timeout):
         processed = False
+        self._pending = []
+
         read_wait = [s for s in self._read_wait.keys()]
         write_wait = [s for s in self._write_wait.keys()]
         readable, writeable, other = select.select(read_wait, write_wait, [], timeout)
@@ -82,6 +88,9 @@ class Server (object):
         for s in writeable:
             processed = True
             self._write_wait[s]()
+
+        for callback in self._pending:
+            callback()
         return processed
 
     def close(self):
@@ -102,8 +111,7 @@ class Server (object):
             context - optional context associated with this listener
             ssl     - optional SSLParam
         '''
-        Listener(port, handler, context, self.__readable, self.__handshake,
-                 ssl=ssl)
+        Listener(port, handler, context, self.__readable, self.__handshake, ssl=ssl)
 
     def add_connection(self, address, handler, context=None, ssl=None):
         '''
@@ -121,8 +129,8 @@ class Server (object):
         h.__incoming = False
         h._network = self
         h.name = '%s:%s' % address
-        if is_ssl:
-            ssl_ctx = ssl.create_default_context()
+        if ssl:
+            ssl_ctx = ssl.create_default_context()  # ignore the SSLParams, and make our own context
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl.CERT_NONE
             h._ssl_ctx = ssl_ctx
@@ -138,73 +146,6 @@ class Server (object):
                 h.close()
         else:
             h._on_connect()
-
-    def _service(self, delay):
-        '''
-          called from service until no work is left to be done. this enforces
-          some fairness by moving round-robin through the sockets with work
-          to do, performing one operation per socket on each _service call.
-        '''
-
-        # --- number of sockets with operations
-        count = 0
-
-        # --- these are closed, but not cleaned up yet
-        for s in self.__readable:
-            if s.closed:
-                self.__readable.remove(s)
-        for s in self.__handshake:
-            if s.closed:
-                self.__handshake.remove(s)
-
-        # --- ssl sockets in handshake negotiation
-        for s in self.__handshake:
-            count += 1
-            if s.ssl_do_handshake():
-                self.__handshake.remove(s)
-                self.__readable.append(s)
-
-        # --- select sockets with activity
-        readable, writeable, other = select.select(
-            self.__readable, self.__writeable, [], delay
-        )
-        count += len(writeable)
-
-        # --- handle one thing on each socket with activity
-        for s in self.__readable:
-            '''
-              an ssl socket reads data in chunks meaning that a socket may
-              appear to be empty (no data to read) even though there is more
-              data in the ssl buffer. the pending method will tell us if
-              ssl has some buffered data from a previously read chunk.
-
-              the logic here looks at every socket in the potentially
-              readable list and checks it for the presence of either data
-              on the socket or pending data in the ssl buffer.
-            '''
-            if s in readable or s.pending():
-                count += 1
-                s.readable()
-
-        # --- outbound connections waiting for completion
-        for s in writeable:
-            if s.writeable():
-                if s.is_ssl():
-                    self.__handshake.append(s)
-                else:
-                    self.__readable.append(s)
-            self.__writeable.remove(s)
-
-        # --- select sockets waiting to write
-        sending = [s for s in self.__readable if s.more_to_send()]
-        if sending:
-            readable, sendable, other = select.select([], sending, [], 0)
-            for s in sendable:
-                count += 1
-                s._send()
-
-        # --- zero when no sockets have activity
-        return count
 
     def service(self, delay=0, max_iterations=0):
         '''
@@ -255,8 +196,7 @@ class SSLParam (object):
       certificate will be provided to the on_handshake method which can
       be rejected by returning a False.
     '''
-    def __init__(self, keyfile=None, certfile=None, server_side=False,
-                 cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLSv1, ca_certs=None):
+    def __init__(self, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLSv1, ca_certs=None):
         self.keyfile = keyfile
         self.certfile = certfile
         self.server_side = server_side
@@ -282,10 +222,10 @@ class BasicHandler (object):
         self.context = context
         self.closed = False
         self.__closing = False
-        self.__sending = []
-        self.__socket = socket
+        self._sending = ''
+        self._socket = socket
         self.__incoming = True
-        self._ssl_ctx= None
+        self._ssl_ctx = None
         self._network = None
 
         self.name = 'BasicHandler::init'
@@ -296,83 +236,8 @@ class BasicHandler (object):
         self.EINTR_cnt = 0
         self.EWOULDBLOCK_cnt = 0
 
-        # ---
-        # ---
-        # --- SSL support -------------------------------------------------
-        self.__ssl_param = None
-        self.__ssl_peer_cert = None
-        self.__ssl_want_read = False
-        self.__ssl_want_write = False
-
         self.on_init()
 
-    def on_init(self):
-        pass
-
-    def get_ssl_peer_cert(self):
-        return self.__ssl_peer_cert
-
-    def is_ssl(self):
-        if self.__ssl_param:
-            return True
-        return False
-
-    def get_ssl_cipher(self):
-        if self.is_ssl():
-            return self.__socket.cipher()
-        return None
-
-    def set_ssl(self, ssl_param):
-        '''
-          Internal use.
-        '''
-        self.__ssl_param = ssl_param
-
-    def ssl_do_handshake(self):
-        '''
-          Internal use.
-        '''
-        if self.__ssl_want_read:
-            try:
-                handle = self == select.select([self], [], [], 0)[0][0]
-            except IndexError:
-                handle = False
-        elif self.__ssl_want_write:
-            try:
-                handle = self == select.select([], [self], [], 0)[1][0]
-            except IndexError:
-                handle = False
-        else:
-            handle = True
-        if handle:
-            self.__ssl_want_read = False
-            self.__ssl_want_write = False
-            try:
-                self.__socket.do_handshake()
-                self.__ssl_peer_cert = self.__socket.getpeercert()
-            except ssl.SSLError, err:
-                err = err.args[0]
-                if ssl.SSL_ERROR_WANT_READ == err:
-                    self.__ssl_want_read = True
-                elif ssl.SSL_ERROR_WANT_WRITE == err:
-                    self.__ssl_want_write = True
-                else:
-                    self.error = 'unexpected SSLError: code=%s' % str(err)
-                    self.close()
-                    return True
-                return False
-            except Exception, e:
-                self.error = str(e)
-                return True
-
-            if not self.on_handshake(self.__ssl_peer_cert):
-                self.error = 'on_handshake: invalid certificate'
-                self.close()
-            else:
-                self.on_ready()
-            return True
-
-        return False
     # --- SSL Support ---------------------------------------------------
     # ---
     # ---
@@ -382,7 +247,7 @@ class BasicHandler (object):
     # --- Handler identifiers -------------------------------------------
     def address(self):
         try:
-            return self.__socket.getsockname()
+            return self._socket.getsockname()
         except socket.error:
             return ('Closing', 0)
 
@@ -420,36 +285,6 @@ class BasicHandler (object):
           anything else to begin handling activity on the socket during calls
           to Server.service.
         '''
-        return True
-
-    def on_opening(self):
-        '''
-          Before calling on_open, take the opportunity to perform some actions
-          on the socket or handler.
-        '''
-        self.name = self.full_address()
-        if not self.NAGLE:
-            self.__socket.setsockopt(
-                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        if self.is_ssl():
-            try:
-                self.__socket = ssl.wrap_socket(
-                    self.__socket,
-                    keyfile=self.__ssl_param.keyfile,
-                    certfile=self.__ssl_param.certfile,
-                    server_side=self.__ssl_param.server_side,
-                    cert_reqs=self.__ssl_param.cert_reqs,
-                    ssl_version=self.__ssl_param.ssl_version,
-                    ca_certs=self.__ssl_param.ca_certs,
-                    do_handshake_on_connect=False
-                )
-            except Exception as e:
-                self.close_reason = str(e)
-                self.__close()
-                return False
-        self.on_open()
-        if not self.is_ssl():
-            self.on_ready()
         return True
 
     def on_fail(self):
@@ -531,7 +366,6 @@ class BasicHandler (object):
     # ---
     # ---
 
-
     # ---
     # ---
     # --- I/O
@@ -586,13 +420,17 @@ class BasicHandler (object):
         self._network._register(self._socket, True, self._do_read)
         self.on_ready()
 
+    @property
+    def _is_pending(self):
+        return self._ssl_ctx is not None and self._sock.pending()
+
     def _do_read(self):
         try:
             data = self._socket.recv(self.RECV_LEN)
         except ssl.SSLWantReadError:
-            self._network._register(self._socket, True, self._do_handshake)
+            self._network._register(self._socket, True, self._do_read)
         except ssl.SSLWantWriteError:
-            self._network._register(self._socket, False, self._do_handshake)
+            self._network._register(self._socket, False, self._do_read)
         except socket.error as e:
             errnum, errmsg = e
             if errnum == errno.ENOENT:
@@ -608,8 +446,7 @@ class BasicHandler (object):
                 self.close_reason = 'remote close'
                 self.close()
             else:
-                # RHC: RIGHT HERE
-                self.rx_count += len(data)
+                self.rxByteCount += len(data)
                 self.on_data(data)
                 if self._is_pending:
                     self._network._set_pending(self._do_read)  # give buffered ssl data another chance
@@ -622,15 +459,15 @@ class BasicHandler (object):
         try:
             l = self._sock.send(data)
         except ssl.SSLWantReadError:
-            self._register(selectors.EVENT_READ, self._do_write)
+            self._network._register(self._socket, True, self._do_write)
         except ssl.SSLWantWriteError:
-            self._register(selectors.EVENT_WRITE, self._do_write)
+            self._network._register(self._socket, False, self._do_write)
         except socket.error as e:
             errnum, errmsg = e
             if errnum in (errno.EINTR, errno.EWOULDBLOCK):
                 self.on_send_error(errmsg)  # not fatal
                 self._sending = data
-                self._register(selectors.EVENT_WRITE, self._do_write)
+                self._network._register(self._socket, False, self._do_write)
             else:
                 self.close('send error on socket: %s' % errmsg)
         except Exception as e:
@@ -639,7 +476,7 @@ class BasicHandler (object):
             self.tx_count += l
             if l == len(data):
                 self._sending = b''
-                self._register(selectors.EVENT_READ, self._do_read)
+                self._register(self._socket, False, self._do_write)
                 self.on_send_complete()
             else:
                 '''
@@ -647,9 +484,7 @@ class BasicHandler (object):
                     waiting for the socket to be writable again (EVENT_WRITE).
                 '''
                 self._sending = data[l:]
-                self._register(selectors.EVENT_WRITE, self._do_write)
-
-
+                self._register(self._socket, False, self._do_write)
     # --- I/O
     # ---
     # ---
@@ -700,10 +535,15 @@ class BasicHandler (object):
     # ---
 
     # --- SEND
-    def send(self, *data):
-        ''' data is one or more strings '''
-        self.__sending.extend((s for s in data if s))  # don't add empty strings
-        self._send()
+    @property
+    def _is_sending(self):
+        return len(self._sending) != 0
+
+    def send(self, data):
+        if self._is_sending:
+            self._sending += data
+        else:
+            self._do_write(data)
 
     def _send(self):
         '''
