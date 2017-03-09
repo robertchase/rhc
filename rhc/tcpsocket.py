@@ -477,6 +477,7 @@ class BasicHandler (object):
                 self.close_reason = 'remote close'
                 self.close()
             else:
+                self._network._register(self._sock, EVENT_READ, self._do_read)
                 self.rxByteCount += len(data)
                 self.on_data(data)
                 if self._is_pending:
