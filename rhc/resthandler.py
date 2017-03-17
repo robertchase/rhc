@@ -55,6 +55,45 @@ class RESTRequest(object):
     def delay(self):
         self.is_delayed = True
 
+    def defer(self, deferred_fn, immediate_fn, *args, **kwargs):
+        '''
+            defer the request until immediate_fn completes; then call deferred_fn
+
+            if immediate_fn does not complete succesfully, then deferred_fn is not called;
+            instead, the error is handled by responding on the request. the defult error
+            response parameters are (400, result), which can be overridden in several ways
+            with the optional kwargs described below.
+
+            Parameters:
+                deferred_fn(request, result) - called when immediate_fn succesfully completes (rc==0)
+                immediate_fn - async function which terminates with (rc, result)
+                args & kwargs - arguments for immediate_fn
+
+            Optional kwargs:
+
+                error_fn - called if immediate_fn fails (rc != 0)
+                error_msg - used in lieu of result if immediate_fn fails (rc != 0)
+                error_200 - if True, respond with (200, {"error": result}; else (400, result)
+        '''
+        error_fn = kwargs.pop('error_fn', None)
+        error_msg = kwargs.pop('error_msg', None)
+        error_200 = kwargs.pop('error_200', False)
+
+        def on_defer(rc, result):
+            if rc == 0:
+                return deferred_fn(self, result)
+            if error_fn:
+                return error_fn(self, result)
+            if error_msg:
+                log.warning('error cid=%s: %s', self.handler.id, result)
+                result = error_msg
+            if error_200:
+                return self.respond({'error': result})
+            self.respond(400, result)
+
+        self.delay()
+        immediate_fn(on_defer, *args, **kwargs)
+
     def respond(self, *args, **kwargs):
         '''
             the args/kwargs usually match the RESTResult __init__ method
