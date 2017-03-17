@@ -60,28 +60,48 @@ class RESTRequest(object):
             defer the request until immediate_fn completes; then call deferred_fn
 
             if immediate_fn does not complete succesfully, then deferred_fn is not called;
-            instead, the error is handled by responding on the request. the defult error
+            instead, the error is handled by responding on the request. the default error
             response parameters are (400, result), which can be overridden in several ways
             with the optional kwargs described below.
 
             Parameters:
                 deferred_fn(request, result) - called when immediate_fn succesfully completes (rc==0)
                 immediate_fn - async function which terminates with (rc, result)
-                args & kwargs - arguments for immediate_fn
+                args & kwargs - arguments for immediate_fn, less optional kwargs below
 
-            Optional kwargs:
+            Optional kwargs to override default error handling:
 
-                error_fn - called if immediate_fn fails (rc != 0)
+                error_fn - called with (request, result) if immediate_fn fails (rc != 0)
+                           must respond on the request or risk hanging the connection
                 error_msg - used in lieu of result if immediate_fn fails (rc != 0)
-                error_200 - if True, respond with (200, {"error": result}; else (400, result)
+                            result is logged as a warning
+                error_200 - if True, respond with (200, {"error": result}
+
+            Notes:
+
+                1. deferred_fn is for the happy-path. it is not called with the (rc, result)
+                   pattern, but is instead called with (request, result). the idea is that
+                   the handing of the request is what is deferred by this method, and that
+                   if everthing is working, we keep going sequentially through the logic.
+                   the deferred_fn is meant to mirror a rest handler's signature.
+
+                2. the immediate_fn is called with a callback as the first parameter and
+                   is expected to invoke that callback with the (rc, result) pattern upon
+                   completion. rc is 0 (zero) for successful completion; otherwise non-zero.
+
+                3. immediate_fn is expected to perform an async operation, although it
+                   doesn't have to. if immediate_fn is not async, it makes more sense to
+                   call it inline.
         '''
+
+        # we have to do this since we don't know how many args immediate_fn will have (if any)
         error_fn = kwargs.pop('error_fn', None)
         error_msg = kwargs.pop('error_msg', None)
         error_200 = kwargs.pop('error_200', False)
 
         def on_defer(rc, result):
             if rc == 0:
-                return deferred_fn(self, result)
+                return deferred_fn(self, result)  # happy path
             if error_fn:
                 return error_fn(self, result)
             if error_msg:
