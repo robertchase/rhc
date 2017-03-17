@@ -312,7 +312,7 @@ class BasicHandler (object):
 
     def on_failed_handshake(self, messsage):
         '''
-          Called when ssl handshake failes.
+          Called when ssl handshake fails.
           After return, on_close will be called.
         '''
         pass
@@ -415,6 +415,7 @@ class BasicHandler (object):
             self.close()
 
     def _on_connect(self):
+        self.name = self.full_address()
         self.on_open()
         self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # bye bye NAGLE
         if self._ssl_ctx:
