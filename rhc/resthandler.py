@@ -55,6 +55,65 @@ class RESTRequest(object):
     def delay(self):
         self.is_delayed = True
 
+    def defer(self, deferred_fn, immediate_fn, *args, **kwargs):
+        '''
+            defer the request until immediate_fn completes; then call deferred_fn
+
+            if immediate_fn does not complete succesfully, then deferred_fn is not called;
+            instead, the error is handled by responding on the request. the default error
+            response parameters are (400, result), which can be overridden in several ways
+            with the optional kwargs described below.
+
+            Parameters:
+                deferred_fn(request, result) - called when immediate_fn succesfully completes (rc==0)
+                immediate_fn - async function which terminates with (rc, result)
+                args & kwargs - arguments for immediate_fn, less optional kwargs below
+
+            Optional kwargs to override default error handling:
+
+                error_fn - called with (request, result) if immediate_fn fails (rc != 0)
+                           must respond on the request or risk hanging the connection
+                error_msg - used in lieu of result if immediate_fn fails (rc != 0)
+                            result is logged as a warning
+                error_200 - if True, respond with (200, {"error": result}
+
+            Notes:
+
+                1. deferred_fn is for the happy-path. it is not called with the (rc, result)
+                   pattern, but is instead called with (request, result). the idea is that
+                   the handing of the request is what is deferred by this method, and that
+                   if everthing is working, we keep going sequentially through the logic.
+                   the deferred_fn is meant to mirror a rest handler's signature.
+
+                2. the immediate_fn is called with a callback as the first parameter and
+                   is expected to invoke that callback with the (rc, result) pattern upon
+                   completion. rc is 0 (zero) for successful completion; otherwise non-zero.
+
+                3. immediate_fn is expected to perform an async operation, although it
+                   doesn't have to. if immediate_fn is not async, it makes more sense to
+                   call it inline.
+        '''
+
+        # we have to do this since we don't know how many args immediate_fn will have (if any)
+        error_fn = kwargs.pop('error_fn', None)
+        error_msg = kwargs.pop('error_msg', None)
+        error_200 = kwargs.pop('error_200', False)
+
+        def on_defer(rc, result):
+            if rc == 0:
+                return deferred_fn(self, result)  # happy path
+            if error_fn:
+                return error_fn(self, result)
+            if error_msg:
+                log.warning('error cid=%s: %s', self.handler.id, result)
+                result = error_msg
+            if error_200:
+                return self.respond({'error': result})
+            self.respond(400, result)
+
+        self.delay()
+        immediate_fn(on_defer, *args, **kwargs)
+
     def respond(self, *args, **kwargs):
         '''
             the args/kwargs usually match the RESTResult __init__ method
@@ -212,19 +271,14 @@ class RESTHandler(HTTPHandler):
 
 class LoggingRESTHandler(RESTHandler):
 
-    NEXT_ID = 0
-    NEXT_REQUEST_ID = 0
-
     def on_open(self):
-        self.id = LoggingRESTHandler.NEXT_ID = LoggingRESTHandler.NEXT_ID + 1
         log.info('open: cid=%d, %s', self.id, self.name)
 
     def on_close(self):
         log.info('close: cid=%s, reason=%s, t=%.4f, rx=%d, tx=%d', getattr(self, 'id', '.'), self.close_reason, time.time() - self.start, self.rxByteCount, self.txByteCount)
 
     def on_rest_data(self, request, *groups):
-        request.id = LoggingRESTHandler.NEXT_REQUEST_ID = LoggingRESTHandler.NEXT_REQUEST_ID + 1
-        log.info('request cid=%d, rid=%d, method=%s, resource=%s, query=%s, groups=%s', self.id, request.id, request.http_method, request.http_resource, request.http_query_string, groups)
+        log.info('request cid=%d, method=%s, resource=%s, query=%s, groups=%s', self.id, request.http_method, request.http_resource, request.http_query_string, groups)
 
     def on_rest_send(self, code, message, content, headers):
         log.debug('response cid=%d, code=%d, message=%s, headers=%s', self.id, code, message, headers)

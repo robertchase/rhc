@@ -22,76 +22,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 import errno
+import os
 import select
 import socket
-import ssl
+import ssl as ssl_library
 import time
 
 
-class ENOENTException(Exception):
-    pass
-
-
-class Client(object):
-
-    '''
-      Synchronous client class for easy client creation.
-
-      The connect is tried immediatedly on creation. The read and write functions
-      poll until they are satisfied.
-    '''
-    def __init__(self, host, port):
-        self.connection = None
-
-        class Context(object):
-            def __init__(self):
-                self.handler = None
-                self.done = False
-
-        class Handler(BasicHandler):
-            def __init__(self, socket, context=None):
-                super(Handler, self).__init__(socket, context)
-                self.data = ''
-
-            def on_ready(self):
-                self.context.done = True
-                self.context.handler = self
-
-            def on_close(self):
-                self.context.done = True
-
-            def on_fail(self):
-                raise Exception('Connection to %s failed: %s' % (self.name, self.error))
-
-            def on_data(self, data):
-                self.data += data
-
-        ctx = Context()
-        Server().add_connection((host, port), Handler, ctx)
-        while not ctx.done:
-            Server().service()
-            time.sleep(.01)
-
-        self.connection = ctx.handler
-
-    def write(self, data):
-        self.connection.send(data)
-        while self.connection.more_to_send():
-            if self.connection.closed:
-                raise Exception('Connection closed')
-            Server().service()
-            time.sleep(.01)
-
-    def read(self, length=0):
-        if length == 0:
-            length = len(self.connection.data)
-        while length > len(self.connection.data):
-            if self.connection.closed:
-                raise Exception('Connection closed')
-            Server().service()
-            time.sleep(.01)
-        ret, self.connection.data = self.connection.data[:length], self.connection.data[length:]
-        return ret
+EVENT_READ = select.POLLIN | select.POLLPRI
+EVENT_WRITE = select.POLLOUT
 
 
 class Server (object):
@@ -110,17 +49,14 @@ class Server (object):
       for each outbound connection.
     '''
     def __init__(self):
-        self.__readable = []
-        self.__writeable = []
-        self.__handshake = []
+        self._poll_map = {}
+        self._poll = select.poll()
+        self._id = 0
 
-    def close(self):
-        for h in self.__readable:
-            h.close()
-        self.__readable = []
-        for h in self.__writeable:
-            h.close()
-        self.__writeable = []
+    @property
+    def next_id(self):
+        self._id += 1
+        return self._id
 
     def add_server(self, port, handler, context=None, ssl=None):
         '''
@@ -130,10 +66,23 @@ class Server (object):
             port    - listening port
             handler - name of handler class (subclass of BasicHandler)
             context - optional context associated with this listener
-            ssl     - optional SSLParam
+            ssl     - optional SSLParam, if this exists the keyfile and
+                      certfile are the only values respected.
         '''
-        Listener(port, handler, context, self.__readable, self.__handshake,
-                 ssl=ssl)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('', port))
+        s.setblocking(False)
+        s.listen(100)
+        if ssl:
+            ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
+            if ssl.certfile:
+                ssl_ctx.load_cert_chain(ssl.certfile, ssl.keyfile)
+        else:
+            ssl_ctx = None
+        l = Listener(s, self, context=context, handler=handler, ssl_ctx=ssl_ctx)
+        self._register(s, EVENT_READ, l._do_accept)
+        return l
 
     def add_connection(self, address, handler, context=None, ssl=None):
         '''
@@ -143,95 +92,33 @@ class Server (object):
             address - (ip-address or name, port)
             handler - name of handler class (subclass of BasicHandler)
             context - optional context associated with connection
-            ssl     - optional SSLParam
+            ssl     - optional SSLParam, if this exists (not None or False)
+                      then ssl will be setup using python defaults.
         '''
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setblocking(0)
+        h = handler(s, context)
+        h._incoming = False
+        h._network = self
+        h.name = '%s:%s' % address
+        h.id = self.next_id
+        if ssl:
+            ssl_ctx = ssl_library.create_default_context()  # ignore the SSLParams, and make our own context
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl_library.CERT_NONE
+            h._ssl_ctx = ssl_ctx
         try:
             s.connect(address)
         except socket.error, e:
             error, errmsg = e
-            if errno.EINPROGRESS != error:
-                # --- temporarily construct a handler in order to fail/close it
-                h = handler(0, context)
-                h.name = '%s:%s' % address
-                h.error = str(e)
+            if errno.EINPROGRESS == error:
+                self._register(s, EVENT_WRITE, h._on_delayed_connect)
+            else:
                 h.on_fail()
-                h.close_reason = 'failed to setup connection'
-                h.on_close()
-                return
-        h = handler(s, context)
-        h.name = '%s:%s' % address
-        if ssl:
-            h.set_ssl(ssl)
-        self.__writeable.append(h)
-
-    def _service(self, delay):
-        '''
-          called from service until no work is left to be done. this enforces
-          some fairness by moving round-robin through the sockets with work
-          to do, performing one operation per socket on each _service call.
-        '''
-
-        # --- number of sockets with operations
-        count = 0
-
-        # --- these are closed, but not cleaned up yet
-        for s in self.__readable:
-            if s.closed:
-                self.__readable.remove(s)
-        for s in self.__handshake:
-            if s.closed:
-                self.__handshake.remove(s)
-
-        # --- ssl sockets in handshake negotiation
-        for s in self.__handshake:
-            count += 1
-            if s.ssl_do_handshake():
-                self.__handshake.remove(s)
-                self.__readable.append(s)
-
-        # --- select sockets with activity
-        readable, writeable, other = select.select(
-            self.__readable, self.__writeable, [], delay
-        )
-        count += len(writeable)
-
-        # --- handle one thing on each socket with activity
-        for s in self.__readable:
-            '''
-              an ssl socket reads data in chunks meaning that a socket may
-              appear to be empty (no data to read) even though there is more
-              data in the ssl buffer. the pending method will tell us if
-              ssl has some buffered data from a previously read chunk.
-
-              the logic here looks at every socket in the potentially
-              readable list and checks it for the presence of either data
-              on the socket or pending data in the ssl buffer.
-            '''
-            if s in readable or s.pending():
-                count += 1
-                s.readable()
-
-        # --- outbound connections waiting for completion
-        for s in writeable:
-            if s.writeable():
-                if s.is_ssl():
-                    self.__handshake.append(s)
-                else:
-                    self.__readable.append(s)
-            self.__writeable.remove(s)
-
-        # --- select sockets waiting to write
-        sending = [s for s in self.__readable if s.more_to_send()]
-        if sending:
-            readable, sendable, other = select.select([], sending, [], 0)
-            for s in sendable:
-                count += 1
-                s._send()
-
-        # --- zero when no sockets have activity
-        return count
+                h.close_reason = 'failed to setup connection: %s' % errmsg
+                h.close()
+        else:
+            h._on_connect()
 
     def service(self, delay=0, max_iterations=0):
         '''
@@ -261,6 +148,47 @@ class Server (object):
                     break
         return did_anything
 
+    def close(self):
+        for s in self._read_wait:
+            try:
+                s.close()
+            except Exception:
+                pass
+        for s in self._write_wait:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    def _register(self, sock, mask, callback):
+        sock = sock.fileno()
+        if sock in self._poll_map:
+            self._poll.modify(sock, mask)
+        else:
+            self._poll.register(sock, mask)
+        self._poll_map[sock] = callback
+
+    def _unregister(self, sock):
+        sock = sock.fileno()
+        if sock in self._poll_map:
+            self._poll.unregister(sock)
+            del self._poll_map[sock]
+
+    def _set_pending(self, callback):
+        self._pending.append(callback)
+
+    def _service(self, timeout):
+        processed = False
+        self._pending = []
+
+        for sock, mask in self._poll.poll(timeout * 1000):
+            processed = True
+            self._poll_map[sock]()
+
+        for callback in self._pending:
+            callback()
+        return processed
+
 
 SERVER = Server()
 
@@ -269,6 +197,8 @@ class SSLParam (object):
 
     '''
       For using SSL with a client or server.
+
+      *** Note comments in add_server and add_connection ***
 
       A server must provide a keyfile and certfile, as well as indicate
       server_side=True. A client need not specify anything
@@ -282,8 +212,7 @@ class SSLParam (object):
       certificate will be provided to the on_handshake method which can
       be rejected by returning a False.
     '''
-    def __init__(self, keyfile=None, certfile=None, server_side=False,
-                 cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLSv1, ca_certs=None):
+    def __init__(self, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl_library.CERT_NONE, ssl_version=ssl_library.PROTOCOL_TLSv1, ca_certs=None):
         self.keyfile = keyfile
         self.certfile = certfile
         self.server_side = server_side
@@ -292,7 +221,7 @@ class SSLParam (object):
         self.ca_certs = ca_certs
 
     def set_ca_certs(self, ca_certs):
-        self.cert_reqs = ssl.CERT_REQUIRED
+        self.cert_reqs = ssl_library.CERT_REQUIRED
         self.ca_certs = ca_certs
 
 
@@ -308,10 +237,11 @@ class BasicHandler (object):
         self.start = time.time()
         self.context = context
         self.closed = False
-        self.__closing = False
-        self.__sending = []
-        self.__socket = socket
-        self.__incoming = True
+        self._sending = ''
+        self._sock = socket
+        self._incoming = True
+        self._ssl_ctx = None
+        self._network = None
 
         self.name = 'BasicHandler::init'
         self.error = None
@@ -321,106 +251,52 @@ class BasicHandler (object):
         self.EINTR_cnt = 0
         self.EWOULDBLOCK_cnt = 0
 
-        # ---
-        # ---
-        # --- SSL support -------------------------------------------------
-        self.__ssl_param = None
-        self.__ssl_peer_cert = None
-        self.__ssl_want_read = False
-        self.__ssl_want_write = False
+        self.t_init = time.time()
+        self.t_open = 0
+        self.t_ready = 0
+        self.t_close = 0
 
         self.on_init()
 
-    def on_init(self):
-        pass
-
-    def get_ssl_peer_cert(self):
-        return self.__ssl_peer_cert
-
-    def is_ssl(self):
-        if self.__ssl_param:
-            return True
-        return False
-
-    def get_ssl_cipher(self):
-        if self.is_ssl():
-            return self.__socket.cipher()
-        return None
-
-    def set_ssl(self, ssl_param):
-        '''
-          Internal use.
-        '''
-        self.__ssl_param = ssl_param
-
-    def ssl_do_handshake(self):
-        '''
-          Internal use.
-        '''
-        if self.__ssl_want_read:
-            try:
-                handle = self == select.select([self], [], [], 0)[0][0]
-            except IndexError:
-                handle = False
-        elif self.__ssl_want_write:
-            try:
-                handle = self == select.select([], [self], [], 0)[1][0]
-            except IndexError:
-                handle = False
+    def send(self, data):
+        if len(self._sending) != 0:
+            self._sending += data
         else:
-            handle = True
-        if handle:
-            self.__ssl_want_read = False
-            self.__ssl_want_write = False
-            try:
-                self.__socket.do_handshake()
-                self.__ssl_peer_cert = self.__socket.getpeercert()
-            except ssl.SSLError, err:
-                err = err.args[0]
-                if ssl.SSL_ERROR_WANT_READ == err:
-                    self.__ssl_want_read = True
-                elif ssl.SSL_ERROR_WANT_WRITE == err:
-                    self.__ssl_want_write = True
-                else:
-                    self.error = 'unexpected SSLError: code=%s' % str(err)
-                    self.close()
-                    return True
-                return False
-            except Exception, e:
-                self.error = str(e)
-                return True
+            self._do_write(data)
 
-            if not self.on_handshake(self.__ssl_peer_cert):
-                self.error = 'on_handshake: invalid certificate'
-                self.close()
-            else:
-                self.on_ready()
-            return True
+    def close(self):
+        if not self.closed:
+            self.t_close = time.time()
+            self.closed = True
+            self._network._unregister(self._sock)
+            if self._sock:
+                self._sock.close()
+            self._on_close()  # for libraries
+            self.on_close()
 
-        return False
-    # --- SSL Support ---------------------------------------------------
-    # ---
-    # ---
+    @property
+    def is_ssl(self):
+        return self._ssl_ctx is not None
 
     # ---
     # ---
     # --- Handler identifiers -------------------------------------------
     def address(self):
         try:
-            return self.__socket.getsockname()
+            return self._sock.getsockname()
         except socket.error:
             return ('Closing', 0)
 
     def peer_address(self):
         try:
-            return self.__socket.getpeername()
+            return self._sock.getpeername()
         except socket.error:
             return ('Closing', 0)
 
     def full_address(self):
         local = '%s:%s' % self.address()
         remote = '%s:%s' % self.peer_address()
-        if self.__incoming:
+        if self._incoming:
             direction = '<-'
         else:
             direction = '->'
@@ -437,6 +313,10 @@ class BasicHandler (object):
     # ---
     # ---
     # --- Callback Methods ----------------------------------------------
+    def on_init(self):
+        ''' called at the end of __init__ '''
+        pass
+
     def on_accept(self):
         '''
           Called by a listening socket after accepting an incoming connection.
@@ -447,40 +327,17 @@ class BasicHandler (object):
         '''
         return True
 
-    def on_opening(self):
+    def on_failed_handshake(self, messsage):
         '''
-          Before calling on_open, take the opportunity to perform some actions
-          on the socket or handler.
+          Called when ssl handshake fails.
+          After return, on_close will be called.
         '''
-        self.name = self.full_address()
-        if not self.NAGLE:
-            self.__socket.setsockopt(
-                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        if self.is_ssl():
-            try:
-                self.__socket = ssl.wrap_socket(
-                    self.__socket,
-                    keyfile=self.__ssl_param.keyfile,
-                    certfile=self.__ssl_param.certfile,
-                    server_side=self.__ssl_param.server_side,
-                    cert_reqs=self.__ssl_param.cert_reqs,
-                    ssl_version=self.__ssl_param.ssl_version,
-                    ca_certs=self.__ssl_param.ca_certs,
-                    do_handshake_on_connect=False
-                )
-            except Exception as e:
-                self.close_reason = str(e)
-                self.__close()
-                return False
-        self.on_open()
-        if not self.is_ssl():
-            self.on_ready()
-        return True
+        pass
 
     def on_fail(self):
         '''
           Called when outbound connection attempt fails; self.error will be set.
-          After return on_close will be called.
+          After return, on_close will be called.
         '''
         pass
 
@@ -558,260 +415,163 @@ class BasicHandler (object):
 
     # ---
     # ---
-    # --- Close Methods -------------------------------------------------
-    def close(self):
-        self.__close()
+    # --- I/O
+    def _on_delayed_connect(self):
+        try:
+            rc = self._sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if rc != 0:
+                self.error = os.strerror(rc)
+        except Exception as e:
+            self.error = str(e)
+            rc = 1
+        if rc == 0:
+            self._on_connect()
+        else:
+            self.on_fail()
+            self.close_error = 'failed to connect'
+            self.close()
 
-    def shutdown(self, how=None):
-        '''
-          Close the socket. If it is already in the process of closing, or already
-          closed, don't do anything. If how is 'w', SHUT_WR will be specified,
-          if how is 'r', SHUT_RD will be specified; otherwise SHUT_RDWR will be
-          specified.
+    def _on_connect(self):
+        self.name = self.full_address()
+        self.t_open = time.time()
+        self.on_open()
+        self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # bye bye NAGLE
+        if self._ssl_ctx:
+            try:
+                self._sock = self._ssl_ctx.wrap_socket(self._sock, server_side=self._incoming, do_handshake_on_connect=False)
+            except Exception as e:
+                self.close_reason = str(e)
+                self.close()
+            else:
+                self._do_handshake()
+        else:
+            self._on_ready()
 
-          When the socket becomes readable and and recv returns an emtpy string,
-          or the socket becomes writable and send causes a socket error, then the
-          socket, and Handler, will be fully closed.
-        '''
-        if not self.__closing:
-            if not self.closed:
+    def _do_handshake(self):
+        try:
+            self._sock.do_handshake()
+        except ssl_library.SSLWantReadError:
+            self._network._register(self._sock, EVENT_READ, self._do_handshake)
+        except ssl_library.SSLWantWriteError:
+            self._network._register(self._sock, EVENT_WRITE, self._do_handshake)
+        except Exception as e:
+            self.on_failed_handshake(str(e))
+            self.close_reason = 'failed ssl handshake'
+            self.close()
+        else:
+            self.peer_cert = self._sock.getpeercert()
+            if not self.on_handshake(self.peer_cert):
+                self.close_reason = 'failed ssl certificate check'
+                self.close()
+                return
+            self._on_ready()
 
-                if 'w' == how:
-                    how = socket.SHUT_WR
-                elif 'r' == how:
-                    how = socket.SHUT_RD
-                else:
-                    how = socket.SHUT_RDWR
+    def _on_ready(self):
+        self.t_ready = time.time()
+        self._network._register(self._sock, EVENT_READ, self._do_read)
+        self.on_ready()
 
-                self.__closing = True
-                self.__socket.shutdown(how)
+    @property
+    def _is_pending(self):
+        return self._ssl_ctx is not None and self._sock.pending()
+
+    def _do_read(self):
+        try:
+            data = self._sock.recv(self.RECV_LEN)
+        except ssl_library.SSLWantReadError:
+            self._network._register(self._sock, EVENT_READ, self._do_read)
+        except ssl_library.SSLWantWriteError:
+            self._network._register(self._sock, EVENT_WRITE, self._do_read)
+        except socket.error as e:
+            errnum, errmsg = e
+            if errnum == errno.ENOENT:
+                pass  # apparently this can happen. http://www.programcreek.com/python/example/374/errno.ENOENT says it comes from the SSL library.
+            else:
+                self.close_reason = 'recv error on socket: %s' % errmsg
+                self.close()
+        except Exception as e:
+            self.close_reason = 'recv error on socket: %s' % str(e)
+            self.close()
+        else:
+            if len(data) == 0:
+                self.close_reason = 'remote close'
+                self.close()
+            else:
+                self._network._register(self._sock, EVENT_READ, self._do_read)
+                self.rxByteCount += len(data)
+                self.on_data(data)
+                if self._is_pending:
+                    self._network._set_pending(self._do_read)  # give buffered ssl data another chance
+
+    def _do_write(self, data=None):
+        data = data if data is not None else self._sending
+        if not data:
+            self.close_reason = 'logic error in handler'
+            self.close()
+            return
+        try:
+            l = self._sock.send(data)
+        except ssl_library.SSLWantReadError:
+            self._network._register(self._sock, EVENT_READ, self._do_write)
+        except ssl_library.SSLWantWriteError:
+            self._network._register(self._sock, EVENT_WRITE, self._do_write)
+        except socket.error as e:
+            errnum, errmsg = e
+            if errnum in (errno.EINTR, errno.EWOULDBLOCK):
+                self.on_send_error(errmsg)  # not fatal
+                self._sending = data
+                self._network._register(self._sock, EVENT_WRITE, self._do_write)
+            else:
+                self.close('send error on socket: %s' % errmsg)
+        except Exception as e:
+            self.close('send error on socket: %s' % str(e))
+        else:
+            self.txByteCount += l
+            if l == len(data):
+                self._sending = ''
+                self._network._register(self._sock, EVENT_READ, self._do_read)
+                self.on_send_complete()
+            else:
+                '''
+                    we couldn't send all the data. buffer the remainder in self._sending and start
+                    waiting for the socket to be writable again (EVENT_WRITE).
+                '''
+                self._sending += data[l:]
+                self._register(self._sock, EVENT_WRITE, self._do_write)
+    # --- I/O
+    # ---
+    # ---
 
     def _on_close(self):
         pass
 
-    def __close(self):
-        if not self.closed:
-            self.__closing = False
-            self.closed = True
-            if self.__socket:
-                self.__socket.close()
-            self._on_close()  # for libraries
-            self.on_close()
-    # --- Close Methods -------------------------------------------------
-    # ---
-    # ---
 
-    # --- SEND
-    def send(self, *data):
-        ''' data is one or more strings '''
-        self.__sending.extend((s for s in data if s))  # don't add empty strings
-        self._send()
+class Listener(object):
 
-    def _send(self):
-        '''
-          Send data on socket.
-
-          The socket.send function does not have to send any of the specified data.
-          This method manages a buffer of data and sends as much as socket.send
-          will allow each time the method is called. If socket.send only performs
-          a partial send, then calls to SERVER.service() will re-call this method
-          until all data is sent. This method ensures that multiple calls will
-          maintain the order of the data.
-
-          Note that the data buffer is managed as a list of strings. If the string
-          types are encoded differently, as might be the case with http header and
-          content strings, then combining them might be a problem. The send method
-          allows for a string or a tuple of strings, and appends the data from
-          each new call to the end of the buffer as separate strings.
-        '''
-        if len(self.__sending):
-            count = 0
-            try:
-                while len(self.__sending):
-                    data = self.__sending[0]
-                    n = self.__socket.send(data)
-                    count += n
-                    if n == len(data):
-                        self.__sending = self.__sending[1:]  # sent entire string
-                    else:
-                        if n > 0:
-                            self.__sending[0] = data[n:]  # sent partial string
-                        break  # come back later and try again
-            except socket.error, e:
-                errnum, errmsg = e
-
-                if errno.EINTR == errnum:
-                    self.EINTR_cnt += 1
-
-                elif errno.EWOULDBLOCK == errnum:
-                    self.EWOULDBLOCK_cnt += 1
-
-                else:
-                    self.error = str(e)
-                    self.on_send_error()
-                    self.close_reason = 'send error on socket'
-                    self.__close()
-
-            except Exception as e:
-                self.error = str(e)
-                self.on_send_error()
-                self.close_reason = 'send error on socket: %s' % self.error
-                self.__close()
-
-            if count:
-                self.txByteCount += count
-                self.on_send(count)
-
-                if not self.more_to_send():
-                    self.on_send_complete()
-
-    # ---
-    # ---
-    # --- Service Methods -----------------------------------------------
-    def recv(self):
-        length = self.RECV_LEN
-        if self.MAX_RECV_LEN > 0:
-            if length > self.MAX_RECV_LEN:
-                length = self.MAX_RECV_LEN
-        if length < 1:
-            self.close_reason = 'length error'
-            self.error = 'Invalid length: %s' % length
-            return None
-        try:
-            data = self.__socket.recv(length)  # read up to 'len' bytes
-        except socket.error, e:                # socket closed
-
-            # this error doesn't make sense, but can happen.
-            # treat like EWOULDBLOCK by raising Exception to caller.
-            if e.args[0] == errno.ENOENT:
-                raise ENOENTException()
-
-            self.close_reason = 'socket error'
-            self.error = e
-            return None                        # socket closed on error
-        if data:
-            self.rxByteCount += len(data)
-        else:
-            self.close_reason = 'remote close'
-        return data
-
-    def readable(self):
-        '''
-          A zero-length read from a readable socket indicates a socket close
-          event. If the peer socket performed a SHUT_WR, then it would still be
-          possible to send data to the peer. This method, therefore, will not
-          close the socket unless zero data is read from the socket AND there is
-          no more data to send. If the peer performed a hard close or a SHUT_RDWR,
-          then the next attempt to send remaining data would indicate a socket
-          problem and things will be properly closed (see the send method).
-        '''
-        try:
-            data = self.recv()
-        except ENOENTException:
-            return
-        if data:
-            self.on_recv(data)
-        elif not self.more_to_send():
-            self.__close()
-
-    def on_recv(self, data):
-        self.on_data(data)
-
-    def writeable(self):
-        self.__incoming = False
-        try:
-            rc = self.__socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-            if rc == 0:
-                pass
-            elif rc == errno.ECONNREFUSED:
-                self.error = 'no listener at address'
-            elif rc == errno.ENETUNREACH:
-                self.error = 'network is unreachable'
-            elif rc == errno.ECONNRESET:
-                self.error = 'connection reset by peer'
-            elif rc == errno.ETIMEDOUT:
-                self.error = 'connection timeout'
-            else:
-                self.error = 'failed to connect, so_error=%d' % rc
-        except Exception, e:
-            self.error = str(e)
-            rc = 1
-        if rc == 0:
-            if not self.on_opening():
-                return 0
-            return 1
-        self.on_fail()
-        self.close_reason = 'failed to connect'
-        self.__close()
-        return 0
-
-    def fileno(self):  # used by select
-        try:
-            fileno = self.__socket.fileno()
-        except socket.error:
-            return 0
-        return fileno
-
-    def pending(self):
-        if self.is_ssl():
-            return self.__socket.pending()
-        return False
-
-    def more_to_send(self):
-        if len(self.__sending) == 0:
-            return False
-        return True
-    # --- Service Methods -----------------------------------------------
-    # ---
-    # ---
-
-
-class Listener:
-
-    def __init__(self, port, handler, context, readable, handshake, ssl=None,
-                 listen=True):
-        self.__handler = handler
-        self.__context = context
-        self.__readable = readable
-        self.__handshake = handshake
-        self.__ssl = ssl
-        self.closed = False
-        s = self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(('', port))
-        s.setblocking(0)
-        if listen:
-            self.listen()
-
-    def listen(self):
-        self.__socket.listen(10)
-        self.__readable.append(self)
+    def __init__(self, socket, server, handler, context=None, ssl_ctx=None):
+        self.socket = socket
+        self.network = server
+        self.handler = handler
+        self.context = context
+        self.ssl_ctx = ssl_ctx
 
     def close(self):
-        if self.__socket:
-            self.__socket.close()
-        self.closed = True
+        ''' close a listening socket
 
-    def fileno(self):
-        return self.__socket.fileno()
+            Normally, a listening socket lasts for for duration of a server's life. If
+            there is a need to close a listener, this is the way to do it.
+        '''
+        self.network._unregister(self.socket)
+        self.socket.close()
 
-    def readable(self):
-        s, address = self.__socket.accept()
-        s.setblocking(0)
-        h = self.__handler(s, self.__context)
+    def _do_accept(self):
+        s, address = self.socket.accept()
+        s.setblocking(False)
+        h = self.handler(s, self.context)
+        h._network = self.network
+        h.ssl_ctx = self.ssl_ctx
+        h.id = self.network.next_id
         if h.on_accept():
-            if self.__ssl:
-                h.set_ssl(self.__ssl)
-            if h.on_opening():
-                if self.__ssl:
-                    self.__handshake.append(h)
-                else:
-                    self.__readable.append(h)
+            h._on_connect()
         else:
-            h.close()
-
-    def pending(self):
-        return False
-
-    def more_to_send(self):
-        return False
+            h.close('connection not accepted')

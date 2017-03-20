@@ -62,6 +62,7 @@ class HTTPHandler(BasicHandler):
                 on_http_error(self)
         '''
         super(HTTPHandler, self).__init__(socket, context)
+        self.t_http_data = 0
         self.__data = ''
         self.__setup()
 
@@ -110,6 +111,7 @@ class HTTPHandler(BasicHandler):
             self._multipart()
         if self.charset:
             self.http_content = self.http_content.decode(self.charset)
+        self.t_http_data = time.time()
         self.on_http_data()
 
     def on_send_complete(self):
@@ -119,7 +121,8 @@ class HTTPHandler(BasicHandler):
     def __send(self, headers, content):
         self.on_http_send(headers, content)
         data = (headers, content) if content else (headers,)
-        super(HTTPHandler, self).send(*data)
+        data = headers + content
+        super(HTTPHandler, self).send(data)
 
     def send(self, method='GET', host=None, resource='/', headers=None, content='', close=False, compress=False):
 

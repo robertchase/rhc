@@ -21,7 +21,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import functools
 import json
+import time
 import types
 
 from socket import gethostbyname
@@ -31,6 +33,266 @@ from urlparse import urlparse
 from httphandler import HTTPHandler
 from tcpsocket import SERVER, SSLParam
 from timer import TIMERS
+
+
+import logging
+log = logging.getLogger(__name__)
+
+
+def connect(callback, url, method='GET', body=None, headers=None, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None, **kwargs):
+    '''
+        Make an async rest connection, executing callback on completion
+
+        Parameters:
+
+            callback - a callable expecting (rc, result), where rc=0 on success
+            url - full url of the resource being referenced
+            method - http method
+            body - http content
+            headers - http headers
+            is_json - if True, successful result is json.loads-ed
+            is_debug - if True, log.debug message are printed at key points:
+                           connection init
+                           connection open
+                           connection close
+            timeout - tolerable period of network inactivity in seconds
+            wrapper - if successful, wrap result in wrapper before callback
+            handler - handler class for connection
+                      a subclass of ConnectionHandler with special logic in setup or evaluate
+            kwargs - see notes about automatic generation of document body
+
+        Notes:
+
+            1. If body is None and no additional kwargs are supplied, then body is empty. If body
+               is None and additional kwargs are supplied they are json.dumps-ed into a the
+               body and a:
+                   'Content-Type': 'application/json; charset=utf-8'
+               header is added.
+    '''
+    p = _URLParser(url)
+    _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+
+
+class Connection(object):
+    '''
+        Wrapper for managing setup data for the connection function.
+
+        Having url data floating all around the source code is a maintenance
+        problem. This class can be instantiated at startup with default values
+        for a connection, allowing fewer required values at connection start.
+
+        A simple example:
+
+            con = Connection('https://somewhere:12345')
+            ...
+            con.get(on_ping, '/ping')
+
+        Parameters:
+
+            url - base url for connection destination
+            is_json - if True, successful result is json.loads-ed
+            is_debug - if True, log.debug message are printed at key points
+            timeout - tolerable period of network inactivity in seconds
+            wrapper - if successful, wrap result in wrapper before callback
+            handler - handler class for connection
+                      a subclass of ConnectionHandler with special logic in setup or evaluate
+
+        Notes:
+
+            1.  The url is parsed and resolved once, preventing dns problems
+                from breaking connection setup after a program is initialized.
+
+            2.  Convenience CRUD methods are available for get, post, put and
+                delete.
+
+            3.  Calls to the connect method or to one of the convenience methods
+                act just like the module-level connect function, with url (and
+                method) automatically supplied.  Any parameters specified to
+                these methods will override default values specified at
+                Connection init.
+    '''
+
+    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None):
+        self.url = url
+        p = _URLParser(url)
+        self.host = p.host
+        self.address = p.address
+        self.port = p.port
+        self.is_ssl = p.is_ssl
+        self.is_json = is_json
+        self.is_debug = is_debug
+        self.timeout = timeout
+        self.wrapper = wrapper
+        self.handler = handler
+
+    def __getattr__(self, name):
+        if name.lower() in ('get', 'post', 'put', 'delete'):
+            return functools.partial(self.connect, name.upper())
+        raise AttributeError(name)
+
+    def add_resource(self, name, path, method='GET', required=[], **kwargs):
+        ''' bind a path + method to a name on the Connection
+
+            name - unique attribute name on Connection
+            path - path to resource on connection
+            method - CRUD method name
+            required - list of required positional arguments
+                       required arguments will be coerced into a dict and supplied as body
+        '''
+        if name in self.__dict__:
+            raise Exception("resource '%s' already defined in Connection instance" % name)
+
+        def _resource(callback, *args, **bkwargs):
+            if len(args) != len(required):
+                raise Exception('Incorrect number of arguments supplied, expecting: %s' % str(required))
+            kwargs.update(bkwargs)
+            if len(args):
+                kwargs['body'] = dict(zip(required, args))
+            return self.connect(method, callback, self.url + path, **kwargs)
+        setattr(self, name, _resource)
+
+    def connect(self, method, callback, path, *args, **kwargs):
+        is_json = kwargs.pop('is_json', self.is_json)
+        is_debug = kwargs.pop('is_debug', self.is_debug)
+        timeout = kwargs.pop('timeout', self.timeout)
+        wrapper = kwargs.pop('wrapper', self.wrapper)
+        handler = kwargs.pop('handler', self.handler)
+
+        url = self.url + path
+        body = kwargs.pop('body', None)
+        headers = kwargs.pop('headers', None)
+        _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+
+
+def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs):
+    c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs)
+    SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
+
+
+class ConnectContext(object):
+
+    def __init__(self, callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs):
+        self.callback = callback
+        self.url = url
+        self.method = method
+        self.path = path
+        self.host = host
+        self.headers = headers
+        self.body = body
+        self.is_json = is_json
+        self.is_debug = is_debug
+        self.timeout = timeout
+        self.wrapper = wrapper
+        self.kwargs = kwargs
+
+
+class ConnectHandler(HTTPHandler):
+
+    def on_init(self):
+        self.is_done = False
+        self.setup()
+        self.timer = TIMERS.add(self.context.timeout * 1000, self.on_timeout).start()
+
+    def after_init(self):
+        if self.context.is_debug:
+            log.debug('starting outbound connection, oid=%s: %s %s', self.id, self.context.method, self.context.url)
+
+    def setup(self):
+        context = self.context
+
+        if context.body is None:
+            if len(context.kwargs) == 0:
+                context.body = ''
+            else:
+                context.body = context.kwargs
+
+        if isinstance(context.body, (dict, list, tuple, float, bool, int)):
+            try:
+                context.body = json.dumps(context.body)
+            except Exception:
+                context.body = str(context.body)
+            else:
+                if context.headers is None:
+                    context.headers = {}
+                context.headers['Content-Type'] = 'application/json; charset=utf-8'
+
+        context.send = {'method': context.method, 'host': context.host, 'resource': context.path, 'headers': context.headers, 'content': context.body}
+
+    def done(self, result, rc=0):
+        if self.is_done:
+            return
+        self.is_done = True
+        self.timer.cancel()
+        self.context.callback(rc, result)
+        self.close_reason = 'transaction complete'
+        self.close()
+
+    def on_open(self):
+        if self.context.is_debug:
+            log.debug('open oid=%s: %s', self.id, self.full_address())
+
+    def on_close(self):
+        reason = self.close_reason
+        if self.context.is_debug:
+            now = time.time()
+            msg = 'close oid=%s, reason=%s, opn=%.4f,' % (
+                self.id,
+                reason,
+                (self.t_open - self.t_init) if self.t_open else 0,
+            )
+            if self.is_ssl:
+                msg += ' rdy=%.4f,' % (
+                    (self.t_ready - self.t_init) if self.t_ready else 0,
+                )
+            msg += ' dat=%.4f, tot=%.4f, rx=%d, tx=%d' % (
+                (self.t_http_data - self.t_init) if self.t_http_data else 0,
+                now - self.t_init,
+                self.rxByteCount,
+                self.txByteCount,
+            )
+            if self.is_ssl:
+                msg += ', ssl handshake=%s' % (
+                    'success' if self.t_ready else 'fail',
+                )
+            log.debug(msg)
+        self.done(reason)
+
+    def on_failed_handshake(self, reason):
+        log.warning('ssl error cid=%s: %s', self.id, reason)
+
+    def on_ready(self):
+        self.timer.re_start()
+        self.send(**self.context.send)
+
+    def on_data(self, data):
+        self.timer.re_start()
+        super(ConnectHandler, self).on_data(data)
+
+    def evaluate(self):
+        status = self.http_status_code
+        result = self.http_content
+        if status < 200 or status >= 300:
+            return self.done(self.http_status_message if result == '' else result, 1)
+        return result
+
+    def on_http_data(self):
+        result = self.evaluate()
+        if self.is_done:
+            return
+
+        if self.context.is_json and result is not None and len(result):
+            try:
+                result = json.loads(result)
+            except Exception as e:
+                return self.done(str(e), 1)
+
+        if self.context.wrapper:
+            result = self.context.wrapper(result)
+
+        self.done(result)
+
+    def on_timeout(self):
+        self.done('timeout', 1)
 
 
 def request(url, callback, content='', headers=None, method='GET', timeout=5.0, close=True, ssl_args=None, compress=False, recv_len=None, event=None):

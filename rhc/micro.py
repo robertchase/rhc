@@ -23,6 +23,7 @@ THE SOFTWARE.
 '''
 from collections import namedtuple
 from importlib import import_module
+import os
 import os.path
 import traceback
 import uuid
@@ -317,7 +318,8 @@ class FSM(object):
             self.state = self.state_config  # switch states before processing event
             self.state(event)
         elif event == 'setup':
-            _import(self.data)(self.config)
+            path = os.getenv('MICRO_SETUP', self.data)
+            _import(path)(self.config)
         elif event == 'teardown':
             self.teardown = _import(self.data)
         elif event == 'server':
