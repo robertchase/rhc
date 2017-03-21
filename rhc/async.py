@@ -286,7 +286,7 @@ class ConnectHandler(HTTPHandler):
             except Exception as e:
                 return self.done(str(e), 1)
 
-        if self.context.wrapper:
+        if self.context.wrapper and result is not None:
             result = self.context.wrapper(result)
 
         self.done(result)
