@@ -55,6 +55,10 @@ class RESTRequest(object):
     def delay(self):
         self.is_delayed = True
 
+    @property
+    def id(self):
+        return self.handler.id
+
     def defer(self, deferred_fn, immediate_fn, *args, **kwargs):
         '''
             defer the request until immediate_fn completes; then call deferred_fn
