@@ -47,17 +47,17 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
 
             callback - a callable expecting (rc, result), where rc=0 on success
             url - full url of the resource being referenced
-            method - http method
-            body - http content
-            headers - http headers
-            is_json - if True, successful result is json.loads-ed
-            is_debug - if True, log.debug message are printed at key points:
+            method - http method (default=GET)
+            body - http content (default=None)
+            headers - http headers (default=None)
+            is_json - if True, successful result is json.loads-ed (default=True)
+            is_debug - if True, log.debug message are printed at key points: (default=False)
                            connection init
                            connection open
                            connection close
-            timeout - tolerable period of network inactivity in seconds
-            wrapper - if successful, wrap result in wrapper before callback
-            handler - handler class for connection
+            timeout - tolerable period of network inactivity in seconds (default=5.0)
+            wrapper - if successful, wrap result in wrapper before callback (default=None)
+            handler - handler class for connection (default=None)
                       a subclass of ConnectionHandler with special logic in setup or evaluate
             kwargs - see notes about automatic generation of document body
 
@@ -71,6 +71,28 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
     '''
     p = _URLParser(url)
     _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+
+
+def immediate(fn):
+    ''' prepare a function as a RESTRequest.defer immediate function
+
+        the function must accept a callback followed by zero or
+        more parameters. the callback accepts two arguments, the
+        first being 0 for success, or anything else for failure,
+        the second being a result value.
+
+        the function is wrapped so that it will not run until it is
+        called twice. the first call assigns arguments and returns
+        a new function. the new function accepts a callback and
+        calls the original function with the callback and arguments.
+
+        works as a decorator or function.
+    '''
+    def _immediate(*args, **kwargs):
+        def _call(callback):
+            fn(callback, *args, **kwargs)
+        return _call
+    return _immediate
 
 
 class Connection(object):
@@ -130,7 +152,7 @@ class Connection(object):
             return functools.partial(self.connect, name.upper())
         raise AttributeError(name)
 
-    def add_resource(self, name, path, method='GET', required=[], **kwargs):
+    def add_resource(self, name, path, method='GET', required=[], optional=[], **kwargs):
         ''' bind a path + method to a name on the Connection
 
             name - unique attribute name on Connection
@@ -138,18 +160,22 @@ class Connection(object):
             method - CRUD method name
             required - list of required positional arguments
                        required arguments will be coerced into a dict and supplied as body
+            optional - list of optional positional arguments
+                       optional arguments will be coerced into a dict along with required
+
+            the bound attribute is an async.immediate.
         '''
         if name in self.__dict__:
             raise Exception("resource '%s' already defined in Connection instance" % name)
 
-        def _resource(callback, *args, **bkwargs):
-            if len(args) != len(required):
-                raise Exception('Incorrect number of arguments supplied, expecting: %s' % str(required))
-            kwargs.update(bkwargs)
+        def _resource(callback, *args, **_kwargs):
+            if len(args) < len(required) or len(args) > len(required + optional):
+                raise Exception('Incorrect number of arguments supplied, expecting: %s, and optionally %s' % (str(required), str(optional)))
+            kwargs.update(_kwargs)
             if len(args):
-                kwargs['body'] = dict(zip(required, args))
+                kwargs['body'] = dict(zip(required + optional, args))
             return self.connect(method, callback, self.url + path, **kwargs)
-        setattr(self, name, _resource)
+        setattr(self, name, immediate(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
         is_json = kwargs.pop('is_json', self.is_json)
