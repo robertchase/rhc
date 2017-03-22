@@ -107,6 +107,7 @@ class Server (object):
             ssl_ctx.check_hostname = False
             ssl_ctx.verify_mode = ssl_library.CERT_NONE
             h._ssl_ctx = ssl_ctx
+        h.after_init()
         try:
             s.connect(address)
         except socket.error, e:
@@ -315,6 +316,10 @@ class BasicHandler (object):
     # --- Callback Methods ----------------------------------------------
     def on_init(self):
         ''' called at the end of __init__ '''
+        pass
+
+    def after_init(self):
+        ''' called after id assignment and ssl setup '''
         pass
 
     def on_accept(self):
@@ -571,6 +576,7 @@ class Listener(object):
         h._network = self.network
         h.ssl_ctx = self.ssl_ctx
         h.id = self.network.next_id
+        h.after_init()
         if h.on_accept():
             h._on_connect()
         else:
