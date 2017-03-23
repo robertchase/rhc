@@ -23,6 +23,7 @@ THE SOFTWARE.
 '''
 import functools
 import json
+import string
 import time
 import types
 
@@ -156,25 +157,44 @@ class Connection(object):
         ''' bind a path + method to a name on the Connection
 
             name - unique attribute name on Connection
-            path - path to resource on connection
-            method - CRUD method name
+            path - path to resource on connection (see Note 2)
+            method - CRUD method name (default=GET)
             required - list of required positional arguments
                        required arguments will be coerced into a dict and supplied as body
             optional - list of optional positional arguments
                        optional arguments will be coerced into a dict along with required
 
-            the bound attribute is an async.immediate.
+            Notes:
+
+                1. the bound attribute is an async.immediate.
+
+                2. the path can have substitution variables which are a subset of the
+                   string.format syntax, for example '/mypath/{my_variable}'. this will
+                   consume the first positional argument (which is automatically
+                   required) to replace the bracketed value in the string. multiple
+                   substitutions are allowed.
+
+                   a bracketed variable name must be specified, and must not be an
+                   integer. this is a subset of what is allowed with string.format.
         '''
         if name in self.__dict__:
             raise Exception("resource '%s' already defined in Connection instance" % name)
 
+        substitution = [t[1] for t in string.Formatter().parse(path) if t[1] is not None]  # grab substitution names
+
         def _resource(callback, *args, **_kwargs):
-            if len(args) < len(required) or len(args) > len(required + optional):
-                raise Exception('Incorrect number of arguments supplied, expecting: %s, and optionally %s' % (str(required), str(optional)))
+            if len(args) < len(substitution + required) or len(args) > len(substitution + required + optional):
+                raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s, opt=%s' % (str(substitution), str(required), str(optional)))
+            if len(substitution):
+                sub, _args = args[:len(substitution)], args[len(substitution):]
+                _path = path.format(**dict(zip(substitution, sub)))
+            else:
+                req = required
+                _path = path
             kwargs.update(_kwargs)
-            if len(args):
-                kwargs['body'] = dict(zip(required + optional, args))
-            return self.connect(method, callback, self.url + path, **kwargs)
+            if len(_args):
+                kwargs['body'] = dict(zip(req + optional, _args))
+            return self.connect(method, callback, self.url + _path, **kwargs)
         setattr(self, name, immediate(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
