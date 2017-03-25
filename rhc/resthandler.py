@@ -59,7 +59,7 @@ class RESTRequest(object):
     def id(self):
         return self.handler.id
 
-    def defer(self, deferred_fn, immediate_fn, *args, **kwargs):
+    def defer(self, deferred_fn, immediate_fn, error_fn=None, error_msg=None, error_200=False):
         '''
             defer the request until immediate_fn completes; then call deferred_fn
 
@@ -69,17 +69,16 @@ class RESTRequest(object):
             with the optional kwargs described below.
 
             Parameters:
-                deferred_fn(request, result) - called when immediate_fn succesfully completes (rc==0)
-                immediate_fn - async function which terminates with (rc, result)
-                args & kwargs - arguments for immediate_fn, less optional kwargs below
-
-            Optional kwargs to override default error handling:
-
-                error_fn - called with (request, result) if immediate_fn fails (rc != 0)
-                           must respond on the request or risk hanging the connection
-                error_msg - used in lieu of result if immediate_fn fails (rc != 0)
-                            result is logged as a warning
-                error_200 - if True, respond with (200, {"error": result}
+                deferred_fn  - called with result of immediate_fn on success
+                               deferred_fn(request, result)
+                immediate_fn - function that takes a callback_fn
+                               callback_fn is eventually called with (rc, result)
+                               if rc != 0, immediate_fn failed
+                error_fn     - called with (request, result) if immediate_fn fails
+                               must respond on the request or risk hanging the connection
+                error_msg    - used in lieu of result if immediate_fn fails
+                               result is logged as a warning
+                error_200    - if True, respond with (200, {"error": result})
 
             Notes:
 
@@ -89,7 +88,7 @@ class RESTRequest(object):
                    if everthing is working, we keep going sequentially through the logic.
                    the deferred_fn is meant to mirror a rest handler's signature.
 
-                2. the immediate_fn is called with a callback as the first parameter and
+                2. the immediate_fn is called with a callback as the only parameter and
                    is expected to invoke that callback with the (rc, result) pattern upon
                    completion. rc is 0 (zero) for successful completion; otherwise non-zero.
 
@@ -97,12 +96,6 @@ class RESTRequest(object):
                    doesn't have to. if immediate_fn is not async, it makes more sense to
                    call it inline.
         '''
-
-        # we have to do this since we don't know how many args immediate_fn will have (if any)
-        error_fn = kwargs.pop('error_fn', None)
-        error_msg = kwargs.pop('error_msg', None)
-        error_200 = kwargs.pop('error_200', False)
-
         def on_defer(rc, result):
             if rc == 0:
                 return deferred_fn(self, result)  # happy path
@@ -116,7 +109,7 @@ class RESTRequest(object):
             self.respond(400, result)
 
         self.delay()
-        immediate_fn(on_defer, *args, **kwargs)
+        immediate_fn(on_defer)
 
     def respond(self, *args, **kwargs):
         '''
