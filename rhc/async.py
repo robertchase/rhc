@@ -74,26 +74,39 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
     _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
 
 
-def immediate(fn):
-    ''' prepare a function as a RESTRequest.defer immediate function
+def partial(fn):
+    ''' convert a callback function into a partial
 
-        the function must accept a callback followed by zero or
-        more parameters. the callback accepts two arguments, the
-        first being 0 for success, or anything else for failure,
-        the second being a result value.
+        the function must accept a callback_fn of the form:
+
+            callback_fn(rc, result)
+
+        as the first argument. if rc is zero, the function
+        finished succesfully. result the function return.
 
         the function is wrapped so that it will not run until it is
         called twice. the first call assigns arguments and returns
-        a new function. the new function accepts a callback and
+        a new function. the new function accepts the callback_fn and
         calls the original function with the callback and arguments.
+
+        this enables a function of the form:
+
+            fn(callback_fn, *args, **kwargs)
+
+        to be easily used as a RESTRequest.defer's immediate_fn.
 
         works as a decorator or function.
     '''
-    def _immediate(*args, **kwargs):
+    def _partial(*args, **kwargs):
         def _call(callback):
             fn(callback, *args, **kwargs)
         return _call
-    return _immediate
+    return _partial
+
+
+def wrap(cmd, *args, **kwargs):
+    ''' helper function callback_cmd -> partially executed partial '''
+    return partial(cmd)(*args, **kwargs)
 
 
 class Connection(object):
@@ -110,7 +123,7 @@ class Connection(object):
             ...
             con.get(on_ping, '/ping')
 
-        Parameters:
+        Pkarameters:
 
             url - base url for connection destination
             is_json - if True, successful result is json.loads-ed
@@ -195,7 +208,7 @@ class Connection(object):
             if len(_args):
                 kwargs['body'] = dict(zip(req + optional, _args))
             return self.connect(method, callback, self.url + _path, **kwargs)
-        setattr(self, name, immediate(_resource))
+        setattr(self, name, partial(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
         is_json = kwargs.pop('is_json', self.is_json)
