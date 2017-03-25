@@ -275,7 +275,6 @@ class BasicHandler (object):
             self._on_close()  # for libraries
             self.on_close()
 
-    @property
     def is_ssl(self):
         return self._ssl_ctx is not None
 
