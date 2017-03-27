@@ -431,8 +431,8 @@ class BasicHandler (object):
         if rc == 0:
             self._on_connect()
         else:
+            self.close_reason = 'failed to connect'
             self.on_fail()
-            self.close_error = 'failed to connect'
             self.close()
 
     def _on_connect(self):
