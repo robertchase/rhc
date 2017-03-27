@@ -104,6 +104,15 @@ def partial(fn):
     return _partial
 
 
+def call(callback_fn, partial_cb):
+    ''' helper function to execute partial_callback
+
+        callback_fn - callback function expecting (rc, result)
+        partial_cb  - result of async.partial(*args, **kwargs)
+    '''
+    return partial_cb(callback_fn)
+
+
 def wrap(cmd, *args, **kwargs):
     ''' helper function callback_cmd -> partially executed partial '''
     return partial(cmd)(*args, **kwargs)
@@ -203,6 +212,7 @@ class Connection(object):
                 _path = path.format(**dict(zip(substitution, sub)))
             else:
                 req = required
+                _args = []
                 _path = path
             kwargs.update(_kwargs)
             if len(_args):
@@ -283,7 +293,8 @@ class ConnectHandler(HTTPHandler):
         self.is_done = True
         self.timer.cancel()
         self.context.callback(rc, result)
-        self.close_reason = 'transaction complete'
+        if not self.close_reason:
+            self.close_reason = 'transaction complete'
         self.close()
 
     def on_open(self):
@@ -299,7 +310,7 @@ class ConnectHandler(HTTPHandler):
                 reason,
                 (self.t_open - self.t_init) if self.t_open else 0,
             )
-            if self.is_ssl:
+            if self.is_ssl():
                 msg += ' rdy=%.4f,' % (
                     (self.t_ready - self.t_init) if self.t_ready else 0,
                 )
@@ -309,7 +320,7 @@ class ConnectHandler(HTTPHandler):
                 self.rxByteCount,
                 self.txByteCount,
             )
-            if self.is_ssl:
+            if self.is_ssl():
                 msg += ', ssl handshake=%s' % (
                     'success' if self.t_ready else 'fail',
                 )
@@ -349,6 +360,12 @@ class ConnectHandler(HTTPHandler):
             result = self.context.wrapper(result)
 
         self.done(result)
+
+    def on_fail(self):
+        self.done(self.close_reason, 1)
+
+    def on_http_error(self):
+        self.done('http error', 1)
 
     def on_timeout(self):
         self.done('timeout', 1)
