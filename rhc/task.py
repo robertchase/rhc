@@ -25,7 +25,15 @@ class Task(object):
         self.callback(rc, result)
 
 
+def partial(fn):
+    def _args(*args, **kwargs):
+        def _callback(callback_fn):
+            task = Task(callback_fn)
+            fn(task, *args, **kwargs)
+            return task
+        return _callback
+    return _args
+
+
 def wrap(cmd, *args, **kwargs):
-    def _partial(callback_fn):
-        cmd(Task(callback_fn), *args, **kwargs)
-    return _partial
+    return partial(cmd)(*args, **kwargs)
