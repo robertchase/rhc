@@ -75,33 +75,37 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
 
 
 def partial(fn):
-    ''' convert a callback function into a partial
+    ''' convert a callback command into a partial
 
-        the function must accept a callback_fn of the form:
+        a callback command is of the form:
+
+            callback_cmd(callback_fn, *args, **kwargs)
+
+        where after callback_cmd is complete callback_fn is invoked
+
+        a callback_fn is of the form:
 
             callback_fn(rc, result)
 
-        as the first argument. if rc is zero, the function
-        finished succesfully. result the function return.
+            where:
+                rc == 0 means success
+                result is the callback_cmd response
 
-        the function is wrapped so that it will not run until it is
-        called twice. the first call assigns arguments and returns
+        the callback_cmd is wrapped so that it will not run until it
+        is called twice. the first call assigns arguments and returns
         a new function. the new function accepts the callback_fn and
         calls the original function with the callback and arguments.
 
-        this enables a function of the form:
-
-            fn(callback_fn, *args, **kwargs)
-
-        to be easily used as a RESTRequest.defer's immediate_fn.
+        this is useful when the code that has the args and kwargs for
+        the command is isolated from the code that has the callback_fn.
 
         works as a decorator or function.
     '''
-    def _partial(*args, **kwargs):
-        def _call(callback):
+    def _args(*args, **kwargs):
+        def _callback(callback):
             fn(callback, *args, **kwargs)
-        return _call
-    return _partial
+        return _callback
+    return _args
 
 
 def call(callback_fn, partial_cb):
