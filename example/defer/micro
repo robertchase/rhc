@@ -1,0 +1,6 @@
+CONFIG_SERVER foo 12345
+SERVER foo
+ROUTE /ping$
+GET foo.ping
+ROUTE /hello/(.*)$
+GET foo.hello
