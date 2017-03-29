@@ -101,6 +101,7 @@ class Server (object):
         h._incoming = False
         h._network = self
         h.name = '%s:%s' % address
+        h.host = address[0]
         h.id = self.next_id
         if ssl:
             ssl_ctx = ssl_library.create_default_context()  # ignore the SSLParams, and make our own context
@@ -120,6 +121,7 @@ class Server (object):
                 h.close()
         else:
             h._on_connect()
+        return h
 
     def service(self, delay=0, max_iterations=0):
         '''
@@ -245,6 +247,7 @@ class BasicHandler (object):
         self._network = None
 
         self.name = 'BasicHandler::init'
+        self.host = None
         self.error = None
         self.close_reason = None
         self.txByteCount = 0
@@ -277,6 +280,10 @@ class BasicHandler (object):
 
     def is_ssl(self):
         return self._ssl_ctx is not None
+
+    @property
+    def is_open(self):
+        return not self.closed
 
     # ---
     # ---
