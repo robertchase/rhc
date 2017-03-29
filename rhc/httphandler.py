@@ -145,7 +145,8 @@ class HTTPHandler(BasicHandler):
             headers['Accept-Encoding'] = 'gzip'
 
         if 'host' not in (k.lower() for k in headers):
-            headers['Host'] = host if host else '%s:%s' % self.peer_address()
+            host = host if host else self.host if self.host else '%s:%s' % self.peer_address
+            headers['Host'] = host
 
         headers = '%s %s HTTP/1.1\r\n%s\r\n\r\n' % (
             method, resource, '\r\n'.join(['%s: %s' % (k, v) for k, v in headers.items()])
