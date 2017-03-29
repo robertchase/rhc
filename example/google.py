@@ -39,8 +39,8 @@ class Google(network.BasicHandler):
 
 
 n = network.Server()
-# c = n.add_connection(('www.google.com', 80), Google)
-c = n.add_connection(('www.google.com', 443), Google, ssl=True)
+c = n.add_connection(('www.google.com', 80), Google)
+# c = n.add_connection(('www.google.com', 443), Google, ssl=True)
 while True:
     '''
         this is an easy way to figure out how to stop, but not
