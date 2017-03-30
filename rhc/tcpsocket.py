@@ -58,7 +58,7 @@ class Server (object):
         self._id += 1
         return self._id
 
-    def add_server(self, port, handler, context=None, ssl=None):
+    def add_server(self, port, handler, context=None, ssl=None, ssl_certfile=None, ssl_keyfile=None):
         '''
           Start a listening socket.
 
@@ -75,9 +75,11 @@ class Server (object):
         s.setblocking(False)
         s.listen(100)
         if ssl:
-            ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.CLIENT_AUTH)
-            if ssl.certfile:
+            ssl_ctx = ssl_library.create_default_context(purpose=ssl_library.Purpose.CLIENT_AUTH)
+            if isinstance(ssl, SSLParam) and ssl.certfile:
                 ssl_ctx.load_cert_chain(ssl.certfile, ssl.keyfile)
+            if ssl_certfile:
+                ssl_ctx.load_cert_chain(ssl_certfile, ssl_keyfile)
         else:
             ssl_ctx = None
         l = Listener(s, self, context=context, handler=handler, ssl_ctx=ssl_ctx)
@@ -152,24 +154,19 @@ class Server (object):
         return did_anything
 
     def close(self):
-        for s in self._read_wait:
+        for callback, sock in self._poll_map.values():
             try:
-                s.close()
-            except Exception:
-                pass
-        for s in self._write_wait:
-            try:
-                s.close()
+                sock.close()
             except Exception:
                 pass
 
     def _register(self, sock, mask, callback):
-        sock = sock.fileno()
-        if sock in self._poll_map:
-            self._poll.modify(sock, mask)
+        fileno = sock.fileno()
+        if fileno in self._poll_map:
+            self._poll.modify(fileno, mask)
         else:
-            self._poll.register(sock, mask)
-        self._poll_map[sock] = callback
+            self._poll.register(fileno, mask)
+        self._poll_map[fileno] = (callback, sock)
 
     def _unregister(self, sock):
         sock = sock.fileno()
@@ -186,7 +183,7 @@ class Server (object):
 
         for sock, mask in self._poll.poll(timeout * 1000):
             processed = True
-            self._poll_map[sock]()
+            self._poll_map[sock][0]()
 
         for callback in self._pending:
             callback()
@@ -268,13 +265,15 @@ class BasicHandler (object):
         else:
             self._do_write(data)
 
-    def close(self):
+    def close(self, reason=None):
         if not self.closed:
             self.t_close = time.time()
             self.closed = True
             self._network._unregister(self._sock)
             if self._sock:
                 self._sock.close()
+            if reason:
+                self.close_reason = reason
             self._on_close()  # for libraries
             self.on_close()
 
@@ -580,7 +579,7 @@ class Listener(object):
         s.setblocking(False)
         h = self.handler(s, self.context)
         h._network = self.network
-        h.ssl_ctx = self.ssl_ctx
+        h._ssl_ctx = self.ssl_ctx
         h.id = self.network.next_id
         h.after_init()
         if h.on_accept():
