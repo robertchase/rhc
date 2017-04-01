@@ -1,0 +1,16 @@
+version: '3'
+services:
+    test:
+        build:
+            context: .
+            dockerfile: docker/test/Dockerfile
+        image: rhc/test
+        volumes:
+        - ../rhc:/opt/rhc/
+        working_dir: /opt/rhc/
+        command: py.test test
+
+networks:
+    default:
+        external:
+            name: test

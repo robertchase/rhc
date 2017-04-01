@@ -1,1 +1,1 @@
-python -m unittest discover $*
+docker-compose run --rm test
