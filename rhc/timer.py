@@ -1,166 +1,82 @@
-'''
-The MIT License (MIT)
-
-Copyright (c) 2013-2015 Robert H Chase
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-'''
 import datetime
+import heapq
 import time
-'''
-  The python library threading.Timer provides a timer which runs in a separate
-  thread. These classes provide a same-thread timer function which is
-  serviced in a loop.
-
-  To use, create a Timers instance, adding new timers with the add method. A
-  timer will not start until its start method is called. The granularity of
-  the timing function will not exceed the frequency of the service method calls.
-'''
 
 
-class Timer (object):
-
-    def __init__(self, duration, action, is_onetime=False):
-        self._duration = duration
-        self.__action = action
-        self.__is_onetime = is_onetime
-        self.__expire = None
-        self.is_running = False
-        self.is_deleted = False
-
-    def start(self):
-        if self.is_deleted:
-            raise Exception('timer is deleted')
-        if self.is_running:
-            raise Exception('timer is already running')
-        self.is_running = True
-        self.__expire = time.time() + (self._duration / 1000.0)
-        return self
-
-    def re_start(self):
-        self.is_running = False
-        self.start()
-
-    def cancel(self):
-        if self.is_running:
-            elapsed = self.__expire - time.time()
-        else:
-            elapsed = 0
-        self.is_running = False
-        if self.__is_onetime:
-            self.is_deleted = True
-        return elapsed
-
-    def expire(self):
-        if self.is_running:
-            self.__expire = time.time() - 5
-
-    def delete(self):
-        self.is_running = False
-        self.is_deleted = True
-
-    def test(self, current):
-        if self.is_running:
-            if current > self.__expire:
-                self.cancel()
-                self.__action()
+import logging
+log = logging.getLogger(__name__)
 
 
-class BackoffTimer (Timer):
-
+class Timer(object):
     '''
-      This is a variable duration timer which starts at an initial value and
-      increases with each call to start by multiplying the current duration by
-      a constant multiplier (default=2) until a maximum is reached. The timer
-      can be reset to the inital value by calling re_start.
+    The python library threading.Timer provides a timer which runs in a separate
+    thread. This class provides a same-thread timer function which can be
+    serviced periodically, using the service method.
+
+    Add new timers with an add* method. A timer will not start running until its
+    start method is called. The granularity of the timing function will not
+    exceed the frequency of the calls to the service method.
+
+    A timer has four methods:
+
+        start    - start the timer. the timer will run for a set duration after
+                   which the action routine is executed.  when a timer is running,
+                   you cannot call the start method again; use re_start instead.
+                   after a timer has expired or is canceled, it can be started
+                   again.
+
+                   the start method returns self, allowing constructs like:
+
+                       my_timer = t.add(act, dur).start()
+
+        re_start - re-start any timer, running or not.
+
+        expire   - expire a running timer, causing the action routine to execute
+                   on the next call to the timer service routine.
+
+        cancel   - expire a running timer without executing the action routine.
+
+        ---
+
+        delete   - same as cancel (for backward compatibility)
     '''
-    def __init__(self, action, initial, maximum, multiplier=2):
-        Timer.__init__(self, initial, action)
-        self.__initial = initial
-        self.__maximum = maximum
-        self.__multiplier = multiplier
-
-    def start(self):
-        Timer.start(self)
-        if self._duration < self.__maximum:
-            self._duration *= self.__multiplier
-            if self._duration > self.__maximum:
-                self._duration = self.__maximum
-        return self
-
-    def re_start(self):
-        self._duration = self.__initial
-        Timer.re_start(self)
-
-
-class HourlyTimer(Timer):
-
-    def __init__(self, action):
-        Timer.__init__(self, 0, action)
-
-    @staticmethod
-    def next_hour():
-        now = datetime.datetime.now()
-        next_hour = datetime.datetime(now.year, now.month, now.day, now.hour) + datetime.timedelta(hours=1)
-        return (next_hour - now).total_seconds()
-
-    def start(self):
-        self._duration = self.next_hour() * 1000
-        return Timer.start(self)
-
-    def re_start(self):
-        self._duration = self.next_hour() * 1000
-        Timer.re_start(self)
-
-
-class Timers(object):
 
     def __init__(self):
-        self.__timers = []
+        self._list = []  # manage list with heapq so that first timer is always the smallest
+
+    def __repr__(self):
+        return str(self._list)
+
+    def __len__(self):
+        return len(self._list)
 
     def service(self):
-        current = time.time()
-        for timer in self.__timers[::-1]:  # reverse allows safe removal
-            timer.test(current)
-            if timer.is_deleted:
-                self.__timers.remove(timer)
+        while len(self) and self._list[0].is_expired:  # handle all expired timers
+            item = heapq.heappop(self._list)  # grabs the smallest expiration (per SimpleTimer.__lt__)
+            item._is_in_heap = False  # Note: expired timers are removed from the timer list; start() will re-insert
+            item.execute()
 
-    def add(self, duration, action, onetime=False):
+    def add(self, action, duration, **kwargs):
         '''
+            Add a simple fixed-duration timer.
+
             Parameters:
                 duration - time, in ms, that the timer runs
                 action - code to execute when timer expires
-                is_onetime - see below
+                kwargs - for backward compatibility
             Return    :
                 unstarted Timer instance
-
-            A onetime timer will be purged when it is canceled or expired;
-            otherwise, the timer will remain in the timer list until
-            explicitly deleted.
         '''
-        timer = Timer(duration, action, onetime)
-        self.__timers.append(timer)
-        return timer
+
+        # for backward compatibility
+        if isinstance(action, int):
+            action, duration = duration, action
+
+        return SimpleTimer(self._list, action, duration)
 
     def add_backoff(self, action, initial, maximum, multiplier=2):
         '''
-            Create a timer increases in duration with each start.
+            Create a timer that increases in duration with each start.
 
             Parameters:
                 action - code to execute when timer expires
@@ -174,9 +90,7 @@ class Timers(object):
             The re_start method will cause the duration to return to
             the initial value.
         '''
-        timer = BackoffTimer(action, initial, maximum, multiplier)
-        self.__timers.append(timer)
-        return timer
+        return BackoffTimer(self._list, action, initial, maximum, multiplier)
 
     def add_hourly(self, action):
         '''
@@ -187,8 +101,118 @@ class Timers(object):
             Return    :
                 unstarted Timer instance
         '''
-        timer = HourlyTimer(action)
-        self.__timers.append(timer)
-        return timer
+        return HourlyTimer(self._list, action)
 
-TIMERS = Timers()
+
+class SimpleTimer(object):
+
+    def __init__(self, timer_list, action, duration):
+        self._timer_list = timer_list
+        self._action = action
+        self._duration = duration
+
+        self._is_in_heap = False
+        self._is_restarting = False
+        self._expiration = 0
+        self.is_running = False
+
+    def __repr__(self):
+        return 'Simple[d=%s, r=%s]' % (self._duration, (self._expiration - time.time()) * 1000)
+
+    def __eq__(self, other):
+        return self._expiration == other._expiration
+
+    def __lt__(self, other):
+        return self._expiration < other._expiration
+
+    def _calc_expiration(self):
+        return time.time() + (self._duration / 1000.0)
+
+    @property
+    def is_expired(self):
+        return self._expiration < time.time()
+
+    def set_action(self, action):
+        self._action = action
+
+    def start(self):
+        if self.is_running:
+            raise Exception("can't start a running timer")
+        self._expiration = self._calc_expiration()
+        self.is_running = True
+        if self._is_in_heap:
+            heapq.heapify(self._timer_list)
+        else:
+            heapq.heappush(self._timer_list, self)
+            self._is_in_heap = True
+        return self
+
+    def re_start(self):
+        if self.is_running:
+            self.is_running = False
+        self._is_restarting = True
+        self.start()
+        self._is_restarting = False
+
+    def cancel(self):
+        if self.is_running:
+            self.is_running = False
+            self._expiration = 0
+
+    def expire(self):
+        if self.is_running:
+            self._expiration = time.time() - 5
+            heapq.heapify(self._timer_list)
+
+    def delete(self):  # for backward compatibility
+        self.cancel()
+
+    def execute(self):
+        if self.is_running:
+            self.is_running = False
+            try:
+                self._action()
+            except Exception:
+                log.exception('error running timer action')
+
+
+class BackoffTimer(SimpleTimer):
+
+    def __init__(self, timer_list, action, initial, maximum, multiplier):
+        super(BackoffTimer, self).__init__(timer_list, action, initial)
+        self._backoff_duration = None
+        self._maximum = maximum
+        self._multiplier = multiplier
+
+    def __repr__(self):
+        return 'Backoff[d=%s, r=%s]' % (self._backoff_duration, (self._expiration - time.time()) * 1000)
+
+    def _calc_expiration(self):
+        if self._backoff_duration is None or self._is_restarting:
+            self._backoff_duration = self._duration
+        else:
+            self._backoff_duration *= self._multiplier
+            if self._backoff_duration > self._maximum:
+                self._backoff_duration = self._maximum
+        return time.time() + (self._backoff_duration / 1000.0)
+
+
+class HourlyTimer(SimpleTimer):
+
+    def __init__(self, timer_list, action):
+        super(HourlyTimer, self).__init__(timer_list, action, None)
+
+    def __repr__(self):
+        r = self._expiration - time.time()
+        rm = int(r / 60)
+        rs = int((r - rm * 60) * 1000) / 1000
+        return 'Hourly[r=%s:%06.3f]' % (rm, rs)
+
+    def _calc_expiration(self):
+        now = datetime.datetime.now()
+        next_hour = datetime.datetime(now.year, now.month, now.day, now.hour) + datetime.timedelta(hours=1)
+        self._duration = (next_hour - now).total_seconds() * 1000
+        return time.time() + (self._duration / 1000.0)
+
+
+TIMERS = Timer()
