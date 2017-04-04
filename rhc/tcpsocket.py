@@ -547,7 +547,7 @@ class BasicHandler (object):
                     waiting for the socket to be writable again (EVENT_WRITE).
                 '''
                 self._sending += data[l:]
-                self._register(self._sock, EVENT_WRITE, self._do_write)
+                self._network._register(self._sock, EVENT_WRITE, self._do_write)
     # --- I/O
     # ---
     # ---
