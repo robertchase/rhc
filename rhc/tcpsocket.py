@@ -515,7 +515,8 @@ class BasicHandler (object):
 
     def _do_write(self, data=None):
         if data is None:
-            data, self._sending = self._sending, ''
+            data = self._sending
+            self._sending = ''
         if not data:
             self.close_reason = 'logic error in handler'
             self.close()
@@ -539,7 +540,6 @@ class BasicHandler (object):
         else:
             self.txByteCount += l
             if l == len(data):
-                self._sending = ''
                 self._network._register(self._sock, EVENT_READ, self._do_read)
                 self.on_send_complete()
             else:
@@ -547,7 +547,7 @@ class BasicHandler (object):
                     we couldn't send all the data. buffer the remainder in self._sending and start
                     waiting for the socket to be writable again (EVENT_WRITE).
                 '''
-                self._sending += data[l:]
+                self._sending = data[l:]
                 self._network._register(self._sock, EVENT_WRITE, self._do_write)
     # --- I/O
     # ---
