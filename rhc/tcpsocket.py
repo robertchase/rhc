@@ -514,7 +514,8 @@ class BasicHandler (object):
                     self._network._set_pending(self._do_read)  # give buffered ssl data another chance
 
     def _do_write(self, data=None):
-        data = data if data is not None else self._sending
+        if data is None:
+            data, self._sending = self._sending, ''
         if not data:
             self.close_reason = 'logic error in handler'
             self.close()
