@@ -103,7 +103,7 @@ def partial(fn):
     '''
     def _args(*args, **kwargs):
         def _callback(callback):
-            fn(callback, *args, **kwargs)
+            return fn(callback, *args, **kwargs)
         return _callback
     return _args
 
@@ -179,20 +179,25 @@ class Connection(object):
             return functools.partial(self.connect, name.upper())
         raise AttributeError(name)
 
-    def add_resource(self, name, path, method='GET', required=[], optional=[], **kwargs):
+    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, timeout=None, handler=None, wrapper=None):
         ''' bind a path + method to a name on the Connection
 
-            name - unique attribute name on Connection
-            path - path to resource on connection (see Note 2)
-            method - CRUD method name (default=GET)
+            name     - unique attribute name on Connection
+            path     - path to resource on connection (see Note 2)
+            method   - CRUD method name (default=GET)
             required - list of required positional arguments
                        required arguments will be coerced into a dict and supplied as body
-            optional - list of optional positional arguments
-                       optional arguments will be coerced into a dict along with required
+            optional - dict of optional positional arguments with default values {name: default, ...}
+            headers  - dict of headers
+            is_json  - override for value on Connection
+            is_debug - override for value on Connection
+            timeout  - override for value on Connection
+            handler  - override for value on Connection
+            wrapper  - override for value on Connection
 
             Notes:
 
-                1. the bound attribute is an async.immediate.
+                1. the bound attribute is an async.partial.
 
                 2. the path can have substitution variables which are a subset of the
                    string.format syntax, for example '/mypath/{my_variable}'. this will
@@ -208,20 +213,37 @@ class Connection(object):
 
         substitution = [t[1] for t in string.Formatter().parse(path) if t[1] is not None]  # grab substitution names
 
-        def _resource(callback, *args, **_kwargs):
-            if len(args) < len(substitution + required) or len(args) > len(substitution + required + optional):
-                raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s, opt=%s' % (str(substitution), str(required), str(optional)))
+        is_json = is_json if is_json is not None else self.is_json
+        is_debug = is_debug if is_debug is not None else self.is_debug
+        timeout = timeout if timeout is not None else self.timeout
+        wrapper = wrapper if wrapper is not None else self.wrapper
+        handler = handler if handler is not None else self.handler
+
+        def _resource(callback, *args, **kwargs):
+
+            _is_debug = kwargs.pop('is_debug', is_debug)
+            _timeout = kwargs.pop('timeout', timeout)
+
+            if len(args) < len(substitution + required):
+                raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s' % (str(substitution), str(required)))
             if len(substitution):
                 sub, _args = args[:len(substitution)], args[len(substitution):]
                 _path = path.format(**dict(zip(substitution, sub)))
             else:
-                req = required
-                _args = []
+                _args = args
                 _path = path
-            kwargs.update(_kwargs)
+
+            body = {}
             if len(_args):
-                kwargs['body'] = dict(zip(req + optional, _args))
-            return self.connect(method, callback, self.url + _path, **kwargs)
+                body = dict(zip(required, _args))
+            body.update(optional)
+            body.update(kwargs)
+            if len(body) == 0:
+                body = None
+
+            kwargs = {}
+
+            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, handler, kwargs)
         setattr(self, name, partial(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
@@ -239,7 +261,7 @@ class Connection(object):
 
 def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs):
     c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs)
-    SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
+    return SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
 
 
 class ConnectContext(object):
@@ -361,7 +383,10 @@ class ConnectHandler(HTTPHandler):
                 return self.done(str(e), 1)
 
         if self.context.wrapper and result is not None:
-            result = self.context.wrapper(result)
+            try:
+                result = self.context.wrapper(result)
+            except Exception as e:
+                self.done(str(e), 1)
 
         self.done(result)
 
