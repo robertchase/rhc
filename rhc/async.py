@@ -145,6 +145,7 @@ class Connection(object):
             wrapper - if successful, wrap result in wrapper before callback
             handler - handler class for connection
                       a subclass of ConnectionHandler with special logic in setup or evaluate
+            headers - dict of headers to be included in all connections
 
         Notes:
 
@@ -161,7 +162,7 @@ class Connection(object):
                 Connection init.
     '''
 
-    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None):
+    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None, headers=None):
         self.url = url
         p = _URLParser(url)
         self.host = p.host
@@ -173,6 +174,7 @@ class Connection(object):
         self.timeout = timeout
         self.wrapper = wrapper
         self.handler = handler
+        self.headers = headers
 
     def __getattr__(self, name):
         if name.lower() in ('get', 'post', 'put', 'delete'):
@@ -189,6 +191,7 @@ class Connection(object):
                        required arguments will be coerced into a dict and supplied as body
             optional - dict of optional positional arguments with default values {name: default, ...}
             headers  - dict of headers
+                       these are added to any headers in the Connection
             is_json  - override for value on Connection
             is_debug - override for value on Connection
             timeout  - override for value on Connection
@@ -212,6 +215,13 @@ class Connection(object):
             raise Exception("resource '%s' already defined in Connection instance" % name)
 
         substitution = [t[1] for t in string.Formatter().parse(path) if t[1] is not None]  # grab substitution names
+
+        _headers = self.headers
+        if headers is not None:
+            if _headers is None:
+                _headers = headers
+            else:
+                _headers.update(headers)
 
         is_json = is_json if is_json is not None else self.is_json
         is_debug = is_debug if is_debug is not None else self.is_debug
@@ -243,7 +253,7 @@ class Connection(object):
 
             kwargs = {}
 
-            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, handler, kwargs)
+            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, _headers, is_json, _is_debug, _timeout, wrapper, handler, kwargs)
         setattr(self, name, partial(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
@@ -282,6 +292,12 @@ class ConnectContext(object):
 
 
 class ConnectHandler(HTTPHandler):
+    '''
+        manage outgoing http request as defined by context
+
+        default behavior is defined by setup and evaluate. override these methods to change the shape
+        of the outgoing message or handling of incoming message.
+    '''
 
     def on_init(self):
         self.is_done = False
@@ -310,8 +326,6 @@ class ConnectHandler(HTTPHandler):
                 if context.headers is None:
                     context.headers = {}
                 context.headers['Content-Type'] = 'application/json; charset=utf-8'
-
-        context.send = {'method': context.method, 'host': context.host, 'resource': context.path, 'headers': context.headers, 'content': context.body}
 
     def done(self, result, rc=0):
         if self.is_done:
@@ -357,8 +371,18 @@ class ConnectHandler(HTTPHandler):
         log.warning('ssl error cid=%s: %s', self.id, reason)
 
     def on_ready(self):
+        '''
+            send http request to peer using values from context
+        '''
         self.timer.re_start()
-        self.send(**self.context.send)
+        context = self.context
+        self.send(
+            method=context.method,
+            host=context.host,
+            resource=context.path,
+            headers=context.headers,
+            content=context.body,
+        )
 
     def on_data(self, data):
         self.timer.re_start()
