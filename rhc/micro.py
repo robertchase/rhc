@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 from collections import namedtuple
+import imp
 from importlib import import_module
 import os
 import os.path
@@ -399,7 +400,11 @@ def _load(fname, files=None, lines=None):
         ll = l.split()
         if len(ll) > 1 and ll[0].lower() == 'import':
             import_fname = ' '.join(ll[1:])
-            if not import_fname.startswith(os.path.sep):  # path is relative
+            if '.' in import_fname and os.path.sep not in import_fname:  # path is dot separated
+                parts = import_fname.split('.')
+                sink, path, sink = imp.find_module(parts[0])  # use module-based location
+                import_fname = os.path.join(path, *parts[1:])
+            elif not import_fname.startswith(os.path.sep):  # path is relative
                 import_fname = os.path.join(dir_path, import_fname)
             _load(import_fname, files, lines)
         else:
