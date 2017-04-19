@@ -57,25 +57,5 @@ class ConfigText(unittest.TestCase):
         self.assertEqual(cfg.server.akk, 'one#asdf')
         self.assertEqual(cfg.server.eek, 'one#')
 
-    def test_count_default(self):
-        cfg = Config()
-        cfg._define('a.b.count', 0, validate_int)
-        cfg._define('a.b.c', 'bar', counter='a.b.count')
-        cfg._set('a.b.count', '2')
-        self.assertEqual(cfg.a.b.c[2], 'bar')
-        cfg._set('a.b.c.2', 'foo')
-        self.assertEqual(cfg.a.b.c[2], 'foo')
-
-    def test_special_variables(self):
-        cfg = Config()
-        cfg._define('a.b.default', 100)
-        self.assertEqual(cfg.a.b.default, 100)
-        cfg._define('a.b.counter', 101)
-        self.assertEqual(cfg.a.b.counter, 101)
-        cfg._define('a.b.validator', 102)
-        self.assertEqual(cfg.a.b.validator, 102)
-        cfg._define('a.b.value', 103)
-        self.assertEqual(cfg.a.b.value, 103)
-
 if __name__ == '__main__':
     unittest.main()

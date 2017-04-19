@@ -1,0 +1,69 @@
+# :required -optional=default
+#
+# SERVER :name :port
+#   ROUTE :pattern
+#     GET|PUT|POST|DELETE :path
+# CONNECTION :name :url -is_json=True -is_debug=False -timeout=5.0 -handler=None -wrapper=None
+#   HEADER :key -default=None -config=None
+#   RESOURCE :name :path -method=GET -is_json=None -is_debug=None -timeout=None -handler=None -wrapper=None
+# CONFIG :name default=None, validate=None, env=None
+
+STATE init
+    EVENT server server
+    EVENT connection connection
+    EVENT config
+        ACTION add_config
+
+STATE server
+    ENTER add_server
+    EVENT route route
+    EVENT server
+        ACTION add_server
+    EVENT config
+        ACTION add_config
+
+    EVENT connection connection
+
+STATE route
+    ENTER add_route
+    EVENT route
+        ACTION add_route
+    EVENT get
+        ACTION add_method
+    EVENT post
+        ACTION add_method
+    EVENT put
+        ACTION add_method
+    EVENT delete
+        ACTION add_method
+    EVENT route
+        ACTION add_route
+    EVENT config
+        ACTION add_config
+
+    EVENT server server
+    EVENT connection connection
+
+STATE connection
+    ENTER add_connection
+    EVENT connection
+        ACTION add_connection
+    EVENT header
+        ACTION add_header
+    EVENT config
+        ACTION add_config
+
+    EVENT resource resource
+    EVENT server server
+
+STATE resource
+    ENTER add_resource
+    EVENT required
+        ACTION add_required
+    EVENT optional
+        ACTION add_optional
+    EVENT config
+        ACTION add_config
+
+    EVENT server server
+    EVENT connection connection
