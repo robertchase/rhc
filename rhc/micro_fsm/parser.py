@@ -88,7 +88,7 @@ class Parser(object):
         self.error = None
         self.fsm.state = 'init'
         self.config = config_file.Config()
-        self.connections = Connections()
+        self.connections = {}
         self.servers = {}
 
     @classmethod
@@ -134,6 +134,8 @@ class Parser(object):
         header = Header(*self.args, **self.kwargs)
         if header.key in self.connection.headers:
             self.error = 'duplicate connection header: %s' % header.key
+        elif header.default is None and header.config is None:
+            self.error = 'header must have a default or config setting: %s' % header.key
         else:
             self.connection.add_header(header)
             if header.config:
@@ -149,15 +151,15 @@ class Parser(object):
         self.connection.add_required(*self.args, **self.kwargs)
 
     def act_add_resource(self):
+        print(100, self.args, self.kwargs)
         resource = Resource(*self.args, **self.kwargs)
         if resource.name in self.connection:
             self.error = 'duplicate connection resource: %s' % resource.name
         else:
-            default = self.config._get('connection.%s' % self.connection.name)
             self.connection.add_resource(resource)
             self._add_config(
                 'connection.%s.resource.%s.is_debug' % (self.connection.name, resource.name),
-                value=config_file.validate_bool(resource.is_debug) if resource.is_debug is not None else default.is_debug,
+                value=config_file.validate_bool(resource.is_debug) if resource.is_debug is not None else None,
                 validator=config_file.validate_bool,
             )
 
@@ -261,12 +263,6 @@ def _method(method, connection, config, callback, path, headers=None, is_json=No
     '''
 
 
-class Connections(dict):
-
-    def __getattr__(self, name):
-        return self[name]
-
-
 class Connection(object):
 
     def __init__(self, name, url, is_json=True, is_debug=False, timeout=5.0, handler=None, wrapper=None):
@@ -344,12 +340,13 @@ class Header(object):
 
 class Resource(object):
 
-    def __init__(self, name, path, is_json=None, is_debug=None, timeout=None, handler=None, wrapper=None):
+    def __init__(self, name, path, method='GET', is_json=None, is_debug=None, timeout=None, handler=None, wrapper=None):
         self.name = name
         self.path = path
-        self.is_json = is_json
-        self.is_debug = is_debug
-        self.timeout = timeout
+        self.method = method
+        self.is_json = config_file.validate_bool(is_json) if is_json is not None else None
+        self.is_debug = config_file.validate_bool(is_debug) if is_debug is not None else None
+        self.timeout = float(timeout) if timeout is not None else None
         self.handler = handler
         self.wrapper = wrapper
 
