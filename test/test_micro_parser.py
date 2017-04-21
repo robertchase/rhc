@@ -83,46 +83,6 @@ def test_connection():
     assert config.timeout == 10.5
 
 
-def test_resource():
-    p = Parser.parse([
-        'CONNECTION foo http://foo.com:10101',
-        'RESOURCE bar /the/bar'
-    ])
-    assert p
-    c = p.connections['foo']
-    r = c.resources['bar']
-    assert r
-    assert r.path == '/the/bar'
-    assert r.method == 'GET'
-    assert r.is_json is None
-    assert r.is_debug is None
-    assert r.timeout is None
-    assert r.handler is None
-    assert r.wrapper is None
-
-    config = p.config.connection.foo.resource.bar
-    assert config.is_debug is None
-
-    p = Parser.parse([
-        'CONNECTION foo http://foo.com:10101',
-        'RESOURCE akk /the/eek method=POST is_json=True is_debug=True timeout=6.3 handler=a.handler wrapper=a.wrapper',
-    ])
-    assert p
-    c = p.connections['foo']
-    r = c.resources['akk']
-    assert r
-    assert r.path == '/the/eek'
-    assert r.method == 'POST'
-    assert r.is_json is True
-    assert r.is_debug is True
-    assert r.timeout == 6.3
-    assert r.handler == 'a.handler'
-    assert r.wrapper == 'a.wrapper'
-
-    config = p.config.connection.foo.resource.akk
-    assert config.is_debug is True
-
-
 def test_header():
     p = Parser.parse([
         'CONNECTION foo http://foo.com:10101',
@@ -180,3 +140,86 @@ def test_header():
         assert False
     except Exception as e:
         assert str(e).startswith('header must have a default or config setting')
+
+
+def test_resource():
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'RESOURCE bar /the/bar'
+    ])
+    assert p
+    c = p.connections['foo']
+    r = c.resources['bar']
+    assert r
+    assert r.path == '/the/bar'
+    assert r.method == 'GET'
+    assert r.is_json is None
+    assert r.is_debug is None
+    assert r.timeout is None
+    assert r.handler is None
+    assert r.wrapper is None
+
+    config = p.config.connection.foo.resource.bar
+    assert config.is_debug is None
+
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'RESOURCE akk /the/eek method=POST is_json=True is_debug=True timeout=6.3 handler=a.handler wrapper=a.wrapper',
+    ])
+    assert p
+    c = p.connections['foo']
+    r = c.resources['akk']
+    assert r
+    assert r.path == '/the/eek'
+    assert r.method == 'POST'
+    assert r.is_json is True
+    assert r.is_debug is True
+    assert r.timeout == 6.3
+    assert r.handler == 'a.handler'
+    assert r.wrapper == 'a.wrapper'
+
+    config = p.config.connection.foo.resource.akk
+    assert config.is_debug is True
+
+
+def test_required():
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'RESOURCE bar /the/bar',
+        'REQUIRED one',
+        'REQUIRED two',
+    ])
+    assert p
+    c = p.connections['foo']
+    r = c.resources['bar']
+    q = r.required
+    assert q
+    assert len(q) == 2
+    assert q[0] == 'one'
+    assert q[1] == 'two'
+
+
+def test_optional():
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'RESOURCE bar /the/bar',
+        'OPTIONAL one default=whatever',
+        'OPTIONAL two config=yeah',
+        'OPTIONAL three default=foo config=bar',
+    ])
+    assert p
+    c = p.connections['foo']
+    r = c.resources['bar']
+    o = r.optional
+    assert o
+    oo = o['one']
+    assert oo.default == 'whatever'
+    oo = o['two']
+    assert oo.default is None
+    oo = o['three']
+    assert oo.default == 'foo'
+    assert oo.config == 'bar'
+
+    config = p.config.connection.foo.resource.bar
+    assert config.yeah is None
+    assert config.bar == 'foo'

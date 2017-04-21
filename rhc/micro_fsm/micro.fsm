@@ -6,6 +6,8 @@
 # CONNECTION :name :url -is_json=True -is_debug=False -timeout=5.0 -handler=None -wrapper=None
 #   HEADER :key -default=None -config=None
 #   RESOURCE :name :path -method=GET -is_json=None -is_debug=None -timeout=None -handler=None -wrapper=None
+#     REQUIRED :name
+#     OPTIONAL :name -default=None, -config=None
 # CONFIG :name default=None, validate=None, env=None
 
 STATE init

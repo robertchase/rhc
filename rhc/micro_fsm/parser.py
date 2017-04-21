@@ -1,12 +1,8 @@
-import functools
 import imp
 import os
-import socket
-from urlparse import urlparse
 
 import rhc.config as config_file
 from rhc.micro_fsm.fsm_micro import create as create_machine
-from rhc.resthandler import RESTMapper
 
 import logging
 log = logging.getLogger(__name__)
@@ -144,14 +140,16 @@ class Parser(object):
     def act_add_method(self):
         self.server.add_method(Method(self.event, *self.args, **self.kwargs))
 
-    def act_add_optional(self):
-        pass
-
     def act_add_required(self):
         self.connection.add_required(*self.args, **self.kwargs)
 
+    def act_add_optional(self):
+        optional = Optional(*self.args, **self.kwargs)
+        resource = self.connection.add_optional(optional)
+        if optional.config:
+            self._add_config('connection.%s.resource.%s.%s' % (self.connection.name, resource.name, optional.config), value=optional.default)
+
     def act_add_resource(self):
-        print(100, self.args, self.kwargs)
         resource = Resource(*self.args, **self.kwargs)
         if resource.name in self.connection:
             self.error = 'duplicate connection resource: %s' % resource.name
@@ -209,25 +207,6 @@ class Server(object):
     def add_method(self, method):
         self.route.methods[method.method] = method.path
 
-    def start(self, config):
-        config = config._get('server.%s' % self.name)
-
-        if not config.is_active:
-            return
-
-        mapper = RESTMapper()
-        for route in self.routes:
-            mapper.add(route.pattern, **route.methods)
-
-        '''
-        context = handler.InboundContext(mapper, self.micro, config.api_key)
-
-        ssl = config.ssl
-        self.micro.NETWORK.add_server(config.port, handler.InboundHandler, context, ssl.is_active, ssl.keyfile, ssl.certfile)
-        log.info('listening on server.%s %sport %s', self.name, 'ssl ' if ssl.is_active else '', config.port)
-        '''
-        log.warning('%s not started', self.name)
-
 
 class Route(object):
 
@@ -247,20 +226,6 @@ class Method(object):
 
     def __repr__(self):
         return 'Method[method=%s, path=%s]' % (self.method, self.path)
-
-
-def _method(method, connection, config, callback, path, headers=None, is_json=None, is_debug=None, api_key=None, wrapper=None, is_ssl=None, timeout=None, body=None, **kwargs):
-    is_json = is_json if is_json is not None else connection.is_json
-    is_debug = is_debug if is_debug is not None else connection.is_debug
-    api_key = api_key if api_key is not None else connection.api_key
-    wrapper = wrapper if wrapper is not None else connection.wrapper
-    is_ssl = is_ssl if is_ssl is not None else connection.is_ssl
-    timeout = timeout if timeout is not None else connection.timeout
-    '''
-    timer = connection.micro.TIMER.add(None, timeout * 1000)
-    ctx = handler.OutboundContext(callback, connection.micro, config, connection.url, method, connection.hostname, connection.path + path, headers, body, is_json, is_debug, api_key, wrapper, timer, **kwargs)
-    return connection.micro.NETWORK.add_connection(connection.host, connection.port, handler.OutboundHandler, ctx, is_ssl=is_ssl)
-    '''
 
 
 class Connection(object):
@@ -284,11 +249,6 @@ class Connection(object):
     def __contains__(self, name):
         return name in self.resources
 
-    def __getattr__(self, name):
-        if name in ('get', 'put', 'post'):
-            return functools.partial(_method, name.upper(), self, self.micro.config._get('connection.%s' % self.name))
-        raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
-
     def add_header(self, header):
         self.headers[header.key] = header
 
@@ -299,32 +259,9 @@ class Connection(object):
     def add_required(self, parameter_name):
         self._resource.add_required(parameter_name)
 
-    def setup(self, config):
-        config = config._get('connection.%s' % self.name)
-        self.url = config.url
-        self.is_active = config.is_active
-        self.is_json = config.is_json
-        self.is_debug = config.is_debug
-        self.timeout = config.timeout
-        self.handler = config.handler
-        self.wrapper = config.wrapper
-
-        if not self.is_active:
-            return
-
-        try:
-            p = urlparse(self.url)
-        except Exception as e:
-            raise Exception("unable to parse '%s' in connection '%s': %s" % (self.url, self.name, e.message))
-        else:
-            try:
-                self.host = socket.gethostbyname(p.hostname)
-            except Exception as e:
-                raise Exception("unable to resolve '%s' in connection '%s': %s" % (p.hostname, self.name, str(e)))
-            self.hostname = p.hostname
-            self.port = p.port
-            self.path = p.path
-            self.is_ssl = p.scheme == 'https'
+    def add_optional(self, optional):
+        self._resource.add_optional(optional)
+        return self._resource
 
 
 class Header(object):
@@ -354,18 +291,24 @@ class Resource(object):
         self.optional = {}
 
     def __repr__(self):
-        return 'Resource[name=%s, url=%s, req=%s' % (self.name, self.path, self.required)
+        return 'Resource[name=%s, url=%s, req=%s, opt=%s' % (self.name, self.path, self.required, self.optional)
 
     def add_required(self, parameter_name):
         self.required.append(parameter_name)
 
-    def setup(self, connection, config):
-        config = config._get('connection.%s.resource.%s' % (connection.name, self.name))
-        self.is_json = config.is_json if config.is_json else connection.is_json
-        self.is_debug = config.is_debug if config.is_debug else connection.is_debug
-        self.timeout = config.timeout if config.timeout else connection.timeout
-        self.handler = config.handler if config.handler else connection.handler
-        self.wrapper = config.wrapper if config.wrapper else connection.wrapper
+    def add_optional(self, optional):
+        self.optional[optional.name] = optional
+
+
+class Optional(object):
+
+    def __init__(self, name, default=None, config=None):
+        self.name = name
+        self.default = default
+        self.config = config
+
+    def __repr__(self):
+        return 'Optional[name=%s, dft=%s, cfg=%s]' % (self.name, self.default, self.config)
 
 
 if __name__ == '__main__':
