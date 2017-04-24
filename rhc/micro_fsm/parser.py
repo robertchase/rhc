@@ -72,20 +72,31 @@ class Parser(object):
     def __init__(self):
         self.fsm = create_machine(
             add_config=self.act_add_config,
+            add_config_server=self.act_add_config_server,
             add_connection=self.act_add_connection,
             add_header=self.act_add_header,
             add_method=self.act_add_method,
+            add_old_server=self.act_add_old_server,
             add_optional=self.act_add_optional,
             add_required=self.act_add_required,
             add_resource=self.act_add_resource,
             add_route=self.act_add_route,
             add_server=self.act_add_server,
+            add_setup=self.act_add_setup,
+            add_teardown=self.act_add_teardown,
         )
         self.error = None
         self.fsm.state = 'init'
         self.config = config_file.Config()
+        self.setup = None
+        self.teardown = None
         self.connections = {}
+        self._config_servers = {}
         self.servers = {}
+
+    @property
+    def is_old(self):
+        return len(self._config_servers) > 0
 
     @classmethod
     def parse(cls, micro='micro'):
@@ -113,6 +124,10 @@ class Parser(object):
                 raise Exception("validate must be one of 'int', 'bool', 'file'")
         config = Config(*self.args, **self.kwargs)
         self._add_config(config.name, **config.kwargs)
+
+    def act_add_config_server(self):
+        name, port = self.args
+        self._config_servers[name] = port
 
     def act_add_connection(self):
         connection = Connection(*self.args, **self.kwargs)
@@ -177,12 +192,37 @@ class Parser(object):
             self._add_config('server.%s.ssl.keyfile' % server.name, validator=config_file.validate_file)
             self._add_config('server.%s.ssl.certfile' % server.name, validator=config_file.validate_file)
 
+    def act_add_old_server(self):
+        name = self.args[0]
+        server = Server(name, self._config_servers.get(name), **self.kwargs)
+        if server.port in self.servers:
+            self.error = 'duplicate SERVER port: %s' % server.port
+        else:
+            self.servers[server.port] = server
+            self.server = server
+            self._add_config('%s.port' % server.name, value=server.port, validator=config_file.validate_int)
+            self._add_config('%s.is_active' % server.name, value=True, validator=config_file.validate_bool)
+            self._add_config('%s.ssl.is_active' % server.name, value=False, validator=config_file.validate_bool)
+            self._add_config('%s.ssl.keyfile' % server.name, validator=config_file.validate_file)
+            self._add_config('%s.ssl.certfile' % server.name, validator=config_file.validate_file)
+
+    def act_add_setup(self):
+        if len(self.args) > 1:
+            raise Exception('too many tokens specified')
+        self.setup = self.args[0]
+
+    def act_add_teardown(self):
+        if len(self.args) > 1:
+            raise Exception('too many tokens specified')
+        self.teardown = self.args[0]
+
 
 class Config(object):
 
     def __init__(self, name, default=None, validate=None, env=None):
         self.name = name
         self.default = default
+        self.validate = validate
         self.env = env
 
     @property
@@ -327,9 +367,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     parser = Parser.parse()
-    print parser.servers
-    print parser.connections
+    # print parser.servers
+    # print parser.connections
     print parser.config
+    print('setup', parser.setup)
+    print('teardown', parser.teardown)
     '''
     micro.load(micro=args.micro, config=args.config if args.no_config is False else None)
 

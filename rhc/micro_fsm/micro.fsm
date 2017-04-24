@@ -9,12 +9,19 @@
 #     REQUIRED :name
 #     OPTIONAL :name -default=None, -config=None
 # CONFIG :name default=None, validate=None, env=None
+# SETUP :path
+# TEARDOWN :path
 
 STATE init
     EVENT server server
     EVENT connection connection
+    EVENT config_server old_init
     EVENT config
         ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
 
 STATE server
     ENTER add_server
@@ -23,6 +30,10 @@ STATE server
         ACTION add_server
     EVENT config
         ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
 
     EVENT connection connection
 
@@ -42,6 +53,10 @@ STATE route
         ACTION add_route
     EVENT config
         ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
 
     EVENT server server
     EVENT connection connection
@@ -66,6 +81,57 @@ STATE resource
         ACTION add_optional
     EVENT config
         ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
 
     EVENT server server
     EVENT connection connection
+
+STATE old_init
+    ENTER add_config_server
+    EVENT config_server
+        ACTION add_config_server
+    EVENT config
+        ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
+    EVENT server old_server
+
+STATE old_server
+    ENTER add_old_server
+    EVENT route old_route
+    EVENT server
+        ACTION add_old_server
+    EVENT config
+        ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
+
+STATE old_route
+    ENTER add_route
+    EVENT route
+        ACTION add_route
+    EVENT get
+        ACTION add_method
+    EVENT post
+        ACTION add_method
+    EVENT put
+        ACTION add_method
+    EVENT delete
+        ACTION add_method
+    EVENT route
+        ACTION add_route
+    EVENT config
+        ACTION add_config
+    EVENT setup
+        ACTION add_setup
+    EVENT teardown
+        ACTION add_teardown
+
+    EVENT server old_server
