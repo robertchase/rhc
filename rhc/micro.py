@@ -2,12 +2,21 @@ from importlib import import_module
 import logging
 import uuid
 
+import rhc.async as async
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
 from rhc.timer import TIMERS
 
 
 log = logging.getLogger(__name__)
+
+
+class Micro(object):
+    def __init__(self):
+        self.connection = type('connection', (object,), {})
+
+
+MICRO = Micro()
 
 
 class MicroContext(object):
@@ -43,7 +52,7 @@ def _import(item_path, is_module=False):
 
 def setup_servers(config, servers):
     for server in servers.values():
-        conf = config._get(server.name)
+        conf = config._get('server.%s' % server.name)
         if conf.is_active is False:
             continue
         context = MicroContext(
@@ -67,6 +76,38 @@ def setup_servers(config, servers):
             conf.ssl.keyfile,
         )
         log.info('listening on %s port %d', server.name, conf.port)
+
+
+def setup_connections(config, connections):
+    for connection in connections.values():
+        conf = config._get('connection.%s' % connection.name)
+        headers = {}
+        for header in connection.headers:
+            headers[header.key] = config._get('connection.%s.header.%s' % (connection.name, header.config)) if header.config else header.default
+        conn = async.Connection(
+           conf.url,
+           connection.is_json,
+           conf.is_debug,
+           conf.timeout,
+           connection.wrapper,
+           connection.handler,
+           headers,
+        )
+        for resource in connection.resources.values():
+            conn.add_resource(
+                resource.name,
+                resource.path,
+                resource.method,
+                resource.required,
+                resource.optional,
+                None,
+                resource.is_json,
+                resource.is_debug,
+                resource.timeout,
+                resource.handler,
+                resource.wrapper,
+            )
+        setattr(MICRO.connection, connection.name, conn)
 
 
 def start(config, setup):
@@ -120,7 +161,7 @@ if __name__ == '__main__':
     else:
         setup_servers(p.config, p.servers)
         if p.is_old is False:
-            pass  # setup_connections...
+            setup_connections(p.config, p.connections)
         start(p.config, p.setup)
         run()
         stop(p.teardown)
