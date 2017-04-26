@@ -95,8 +95,8 @@ class Parser(object):
         self.servers = {}
 
     @property
-    def is_old(self):
-        return len(self._config_servers) > 0
+    def is_new(self):
+        return len(self._config_servers) == 0
 
     @classmethod
     def parse(cls, micro='micro'):

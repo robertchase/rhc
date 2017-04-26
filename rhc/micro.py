@@ -3,20 +3,14 @@ import logging
 import uuid
 
 import rhc.async as async
+from rhc.connections import connection
+from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
 from rhc.timer import TIMERS
 
 
 log = logging.getLogger(__name__)
-
-
-class Micro(object):
-    def __init__(self):
-        self.connection = type('connection', (object,), {})
-
-
-MICRO = Micro()
 
 
 class MicroContext(object):
@@ -50,6 +44,17 @@ def _import(item_path, is_module=False):
     return getattr(module, function)
 
 
+def load_connection(filename='micro'):
+    p = parser.parse(filename)
+    setup_connections(p.config, p.connections)
+
+
+def load_config():
+    p = parser.parse()
+    p.config_load()
+    return p.config
+
+
 def setup_servers(config, servers):
     for server in servers.values():
         conf = config._get('server.%s' % server.name)
@@ -79,35 +84,38 @@ def setup_servers(config, servers):
 
 
 def setup_connections(config, connections):
-    for connection in connections.values():
-        conf = config._get('connection.%s' % connection.name)
+    for c in connections.values():
+        conf = config._get('connection.%s' % c.name)
         headers = {}
-        for header in connection.headers:
-            headers[header.key] = config._get('connection.%s.header.%s' % (connection.name, header.config)) if header.config else header.default
+        for header in c.headers:
+            headers[header.key] = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else header.default
         conn = async.Connection(
            conf.url,
-           connection.is_json,
+           c.is_json,
            conf.is_debug,
            conf.timeout,
-           connection.wrapper,
-           connection.handler,
+           _import(c.wrapper) if c.wrapper else None,
+           _import(c.handler) if c.handler else None,
            headers,
         )
-        for resource in connection.resources.values():
+        for resource in c.resources.values():
+            optional = {}
+            for option in resource.optional.values():
+                optional[option.name] = config._get('connection.%s.resource.%s.%s' % (c.name, resource.name, option.config)) if option.config else option.default
             conn.add_resource(
                 resource.name,
                 resource.path,
                 resource.method,
                 resource.required,
-                resource.optional,
+                optional,
                 None,
                 resource.is_json,
                 resource.is_debug,
                 resource.timeout,
-                resource.handler,
-                resource.wrapper,
+                _import(resource.handler) if resource.handler else None,
+                _import(resource.wrapper) if resource.wrapper else None,
             )
-        setattr(MICRO.connection, connection.name, conn)
+        setattr(connection, c.name, conn)
 
 
 def start(config, setup):
@@ -136,31 +144,29 @@ if __name__ == '__main__':
     import argparse
     import logging
 
-    from rhc.micro_fsm.parser import Parser as micro_parser
-
     logging.basicConfig(level=logging.DEBUG)
 
-    parser = argparse.ArgumentParser(
+    aparser = argparse.ArgumentParser(
         description='start a micro service',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument('--config', default='config', help='configuration file')
-    parser.add_argument('--no-config', dest='no_config', default=False, action='store_true', help="don't use a config file")
-    parser.add_argument('--micro', default='micro', help='micro description file')
-    parser.add_argument('-c', '--config-only', dest='config_only', action='store_true', default=False, help='parse micro and config files and display config values')
+    aparser.add_argument('--config', default='config', help='configuration file')
+    aparser.add_argument('--no-config', dest='no_config', default=False, action='store_true', help="don't use a config file")
+    aparser.add_argument('--micro', default='micro', help='micro description file')
+    aparser.add_argument('-c', '--config-only', dest='config_only', action='store_true', default=False, help='parse micro and config files and display config values')
 
-    parser.add_argument('-v', '--verbose', action='store_true', default=False, help='display debug level messages')
-    parser.add_argument('-s', '--stdout', action='store_true', default=False, help='display messages to stdout')
-    args = parser.parse_args()
+    aparser.add_argument('-v', '--verbose', action='store_true', default=False, help='display debug level messages')
+    aparser.add_argument('-s', '--stdout', action='store_true', default=False, help='display messages to stdout')
+    args = aparser.parse_args()
 
-    p = micro_parser.parse(args.micro)
+    p = parser.parse(args.micro)
     if args.no_config is False:
         p.config._load(args.config)
     if args.config_only is True:
         print p.config
     else:
         setup_servers(p.config, p.servers)
-        if p.is_old is False:
+        if p.is_new:
             setup_connections(p.config, p.connections)
         start(p.config, p.setup)
         run()
