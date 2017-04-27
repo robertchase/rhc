@@ -145,8 +145,8 @@ class Parser(object):
         header = Header(*self.args, **self.kwargs)
         if header.key in self.connection.headers:
             self.error = 'duplicate connection header: %s' % header.key
-        elif header.default is None and header.config is None:
-            self.error = 'header must have a default or config setting: %s' % header.key
+        elif header.default is None and header.config is None and header.code is None:
+            self.error = 'header must have a default, config or code setting: %s' % header.key
         else:
             self.connection.add_header(header)
             if header.config:
@@ -270,7 +270,7 @@ class Method(object):
 
 class Connection(object):
 
-    def __init__(self, name, url, is_json=True, is_debug=False, timeout=5.0, handler=None, wrapper=None):
+    def __init__(self, name, url, is_json=True, is_debug=False, timeout=5.0, handler=None, wrapper=None, setup=None):
         self.name = name
         self.url = url
         self.is_json = config_file.validate_bool(is_json)
@@ -278,6 +278,7 @@ class Connection(object):
         self.timeout = float(timeout)
         self.handler = handler
         self.wrapper = wrapper
+        self.setup = setup
 
         self.headers = {}
         self.resources = {}
@@ -306,26 +307,29 @@ class Connection(object):
 
 class Header(object):
 
-    def __init__(self, key, default=None, config=None):
+    def __init__(self, key, default=None, config=None, code=None):
         self.key = key
         self.default = default
         self.config = config
+        self.code = code
 
     def __repr__(self):
-        return 'Header[key=%s, dft=%s, cfg=%s]' % (self.key, self.default, self.config)
+        return 'Header[key=%s, dft=%s, cfg=%s, cod=%s]' % (self.key, self.default, self.config, self.code)
 
 
 class Resource(object):
 
-    def __init__(self, name, path, method='GET', is_json=None, is_debug=None, timeout=None, handler=None, wrapper=None):
+    def __init__(self, name, path, method='GET', is_json=None, is_debug=None, trace=None, timeout=None, handler=None, wrapper=None, setup=None):
         self.name = name
         self.path = path
         self.method = method
         self.is_json = config_file.validate_bool(is_json) if is_json is not None else None
         self.is_debug = config_file.validate_bool(is_debug) if is_debug is not None else None
+        self.trace = config_file.validate_bool(trace) if trace is not None else None
         self.timeout = float(timeout) if timeout is not None else None
         self.handler = handler
         self.wrapper = wrapper
+        self.setup = setup
 
         self.required = []
         self.optional = {}

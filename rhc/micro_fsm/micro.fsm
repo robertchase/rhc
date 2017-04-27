@@ -3,9 +3,9 @@
 # SERVER :name :port
 #   ROUTE :pattern
 #     GET|PUT|POST|DELETE :path
-# CONNECTION :name :url -is_json=True -is_debug=False -timeout=5.0 -handler=None -wrapper=None
-#   HEADER :key -default=None -config=None
-#   RESOURCE :name :path -method=GET -is_json=None -is_debug=None -timeout=None -handler=None -wrapper=None
+# CONNECTION :name :url -is_json=True -is_debug=False -timeout=5.0 -handler=None -setup=None -wrapper=None -setup=None
+#   HEADER :key -default=None -config=None -code=None
+#   RESOURCE :name :path -method=GET -is_json=None -is_debug=None -timeout=None -handler=None -setup=None -wrapper=None -setup=None
 #     REQUIRED :name
 #     OPTIONAL :name -default=None, -config=None
 # CONFIG :name default=None, validate=None, env=None
@@ -75,6 +75,7 @@ STATE connection
 
 STATE resource
     ENTER add_resource
+    EVENT resource resource
     EVENT required
         ACTION add_required
     EVENT optional

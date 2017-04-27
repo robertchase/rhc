@@ -71,7 +71,7 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
                header is added.
     '''
     p = _URLParser(url)
-    _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+    _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
 
 
 def partial(fn):
@@ -143,6 +143,10 @@ class Connection(object):
             is_debug - if True, log.debug message are printed at key points
             timeout - tolerable period of network inactivity in seconds
             wrapper - if successful, wrap result in wrapper before callback
+            setup - prepare or modify headers and content before send
+                    setup(headers, content) returns (headers, content)
+                        where - headers is a dict of key: value pairs which is returned as a dict
+                                content is a dict of coerced parameters which can be returned as anything (eg, XML document)
             handler - handler class for connection
                       a subclass of ConnectionHandler with special logic in setup or evaluate
             headers - dict of headers to be included in all connections
@@ -162,7 +166,7 @@ class Connection(object):
                 Connection init.
     '''
 
-    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None, headers=None):
+    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, setup=None, handler=None, headers=None):
         self.url = url
         p = _URLParser(url)
         self.host = p.host
@@ -173,6 +177,7 @@ class Connection(object):
         self.is_debug = is_debug
         self.timeout = timeout
         self.wrapper = wrapper
+        self.setup = setup
         self.handler = handler
         self.headers = headers
 
@@ -181,7 +186,7 @@ class Connection(object):
             return functools.partial(self.connect, name.upper())
         raise AttributeError(name)
 
-    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, timeout=None, handler=None, wrapper=None):
+    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, handler=None, wrapper=None, setup=None):
         ''' bind a path + method to a name on the Connection
 
             name     - unique attribute name on Connection
@@ -194,9 +199,11 @@ class Connection(object):
                        these are added to any headers in the Connection
             is_json  - override for value on Connection
             is_debug - override for value on Connection
+            trace    - debug dump outbound HTTP document
             timeout  - override for value on Connection
             handler  - override for value on Connection
             wrapper  - override for value on Connection
+            setup    - override for value on Connection
 
             Notes:
 
@@ -228,6 +235,7 @@ class Connection(object):
         timeout = timeout if timeout is not None else self.timeout
         wrapper = wrapper if wrapper is not None else self.wrapper
         handler = handler if handler is not None else self.handler
+        setup = setup if setup is not None else self.setup
 
         def _resource(callback, *args, **kwargs):
 
@@ -251,9 +259,11 @@ class Connection(object):
             if len(body) == 0:
                 body = None
 
+            hdrs = {n: v() if callable(v) else v for n, v in _headers.items()}
+
             kwargs = {}
 
-            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, _headers, is_json, _is_debug, _timeout, wrapper, handler, kwargs)
+            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, trace, kwargs)
         setattr(self, name, partial(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
@@ -266,17 +276,17 @@ class Connection(object):
         url = self.url + path
         body = kwargs.pop('body', None)
         headers = kwargs.pop('headers', None)
-        _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+        _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
 
 
-def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs):
-    c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs)
+def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, setup, handler, trace, kwargs):
+    c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, setup, kwargs, trace)
     return SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
 
 
 class ConnectContext(object):
 
-    def __init__(self, callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs):
+    def __init__(self, callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, setup, kwargs, trace):
         self.callback = callback
         self.url = url
         self.method = method
@@ -288,7 +298,9 @@ class ConnectContext(object):
         self.is_debug = is_debug
         self.timeout = timeout
         self.wrapper = wrapper
+        self.setup = setup
         self.kwargs = kwargs
+        self.trace = trace
 
 
 class ConnectHandler(HTTPHandler):
@@ -310,6 +322,8 @@ class ConnectHandler(HTTPHandler):
 
     def setup(self):
         context = self.context
+        if context.setup:
+            context.headers, context.body = context.setup(context.headers, context.body)
 
         if context.body is None:
             if len(context.kwargs) == 0:
@@ -383,6 +397,11 @@ class ConnectHandler(HTTPHandler):
             headers=context.headers,
             content=context.body,
         )
+
+    def on_http_send(self, headers, content):
+        if self.context.trace:
+            log.debug(headers)
+            log.debug(content)
 
     def on_data(self, data):
         self.timer.re_start()

@@ -4,6 +4,7 @@ import uuid
 
 import rhc.async as async
 from rhc.connections import connection
+import rhc.file_util as file_util
 from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
@@ -44,7 +45,8 @@ def _import(item_path, is_module=False):
     return getattr(module, function)
 
 
-def load_connection(filename='micro'):
+def load_connection(filename):
+    filename = file_util.normalize_path(filename, filetype='micro')
     p = parser.parse(filename)
     setup_connections(p.config, p.connections)
 
@@ -87,8 +89,8 @@ def setup_connections(config, connections):
     for c in connections.values():
         conf = config._get('connection.%s' % c.name)
         headers = {}
-        for header in c.headers:
-            headers[header.key] = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else header.default
+        for header in c.headers.values():
+            headers[header.key] = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else _import(header.code) if header.code else header.default
         conn = async.Connection(
            conf.url,
            c.is_json,
@@ -96,6 +98,7 @@ def setup_connections(config, connections):
            conf.timeout,
            _import(c.wrapper) if c.wrapper else None,
            _import(c.handler) if c.handler else None,
+           _import(c.setup) if c.setup else None,
            headers,
         )
         for resource in c.resources.values():
@@ -111,9 +114,11 @@ def setup_connections(config, connections):
                 None,
                 resource.is_json,
                 resource.is_debug,
+                resource.trace,
                 resource.timeout,
                 _import(resource.handler) if resource.handler else None,
                 _import(resource.wrapper) if resource.wrapper else None,
+                _import(resource.setup) if resource.setup else None,
             )
         setattr(connection, c.name, conn)
 
@@ -138,6 +143,13 @@ def run(sleep=100, max_iterations=100):
 def stop(teardown):
     if teardown:
         _import(teardown)()
+
+
+def launch(micro):
+    p = parser.parse(micro)
+    setup_servers(p.config, p.servers)
+    setup_connections(p.config, p.connections)
+    run()
 
 
 if __name__ == '__main__':
