@@ -46,7 +46,8 @@ def _import(item_path, is_module=False):
 
 
 def load_connection(filename):
-    filename = file_util.normalize_path(filename, filetype='micro')
+    if isinstance(filename, str):
+        filename = file_util.normalize_path(filename, filetype='micro')
     p = parser.parse(filename)
     setup_connections(p.config, p.connections)
 
@@ -57,9 +58,12 @@ def load_config():
     return p.config
 
 
-def setup_servers(config, servers):
+def setup_servers(config, servers, is_new):
     for server in servers.values():
-        conf = config._get('server.%s' % server.name)
+        if is_new:
+            conf = config._get('server.%s' % server.name)
+        else:
+            conf = config._get('%s' % server.name)
         if conf.is_active is False:
             continue
         context = MicroContext(
@@ -177,7 +181,7 @@ if __name__ == '__main__':
     if args.config_only is True:
         print p.config
     else:
-        setup_servers(p.config, p.servers)
+        setup_servers(p.config, p.servers, p.is_new)
         if p.is_new:
             setup_connections(p.config, p.connections)
         start(p.config, p.setup)
