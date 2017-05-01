@@ -139,7 +139,7 @@ def test_header():
         ])
         assert False
     except Exception as e:
-        assert str(e).startswith('header must have a default or config setting')
+        assert str(e).startswith('header must have a default, config or code setting')
 
 
 def test_resource():
