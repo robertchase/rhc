@@ -10,8 +10,9 @@ def normalize_path(path, filetype=None):
         if filetype and parts[-1] == filetype:
             parts = parts[:-1]  # save '.filetype' extension if exists
             extension = '.' + filetype
-        sink, path, sink = imp.find_module(parts[0])  # use module-based location
-        path = os.path.join(path, *parts[1:]) + extension
+        if len(parts) > 1:
+            sink, path, sink = imp.find_module(parts[0])  # use module-based location
+            path = os.path.join(path, *parts[1:]) + extension
     elif not path.startswith(os.path.sep):  # path is relative
         path = os.path.join(os.getcwd(), path)
     return path
