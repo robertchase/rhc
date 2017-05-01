@@ -31,9 +31,10 @@ from socket import gethostbyname
 from urllib import urlencode
 from urlparse import urlparse
 
-from httphandler import HTTPHandler
-from tcpsocket import SERVER, SSLParam
-from timer import TIMERS
+from rhc.httphandler import HTTPHandler
+from rhc.tcpsocket import SERVER, SSLParam
+from rhc.task import Task
+from rhc.timer import TIMERS
 
 
 import logging
@@ -120,6 +121,25 @@ def call(callback_fn, partial_cb):
 def wrap(cmd, *args, **kwargs):
     ''' helper function callback_cmd -> partially executed partial '''
     return partial(cmd)(*args, **kwargs)
+
+
+def wait(partial_cb, callback_fn=None, task_fn=None):
+    ''' helper function to wait for completion of partial_cb '''
+    def cb_fn(rc, result):
+        if rc != 0:
+            raise Exception(result)
+        print result
+    if callback_fn is None:
+        callback_fn = cb_fn
+    if task_fn:
+        def task_cb(rc, result):
+            if rc != 0:
+                callback_fn(rc, result)
+            else:
+                task_fn(Task(callback_fn), result)
+        run(partial_cb(task_cb))
+    else:
+        run(partial_cb(callback_fn))
 
 
 class Connection(object):
@@ -400,8 +420,7 @@ class ConnectHandler(HTTPHandler):
 
     def on_http_send(self, headers, content):
         if self.context.trace:
-            log.debug(headers)
-            log.debug(content)
+            log.debug(headers + content)
 
     def on_data(self, data):
         self.timer.re_start()
