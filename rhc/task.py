@@ -58,7 +58,3 @@ def partial(fn):
             return task
         return _callback
     return _args
-
-
-def wrap(cmd, *args, **kwargs):
-    return partial(cmd)(*args, **kwargs)
