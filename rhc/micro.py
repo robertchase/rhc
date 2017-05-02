@@ -45,11 +45,18 @@ def _import(item_path, is_module=False):
     return getattr(module, function)
 
 
+def load_micro(filename):
+    p = load_connection(filename)
+    setup_servers(p.config, p.servers, p.is_new)
+    return p
+
+
 def load_connection(filename):
     if isinstance(filename, str):
         filename = file_util.normalize_path(filename, filetype='micro')
     p = parser.parse(filename)
     setup_connections(p.config, p.connections)
+    return p
 
 
 def load_config():
