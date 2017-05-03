@@ -156,7 +156,7 @@ class Connection(object):
             ...
             con.get(on_ping, '/ping')
 
-        Pkarameters:
+        Parameters:
 
             url - base url for connection destination
             is_json - if True, successful result is json.loads-ed
@@ -203,7 +203,7 @@ class Connection(object):
 
     def __getattr__(self, name):
         if name.lower() in ('get', 'post', 'put', 'delete'):
-            return functools.partial(self.connect, name.upper())
+            return partial(functools.partial(self.connect, name.upper()))
         raise AttributeError(name)
 
     def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, handler=None, wrapper=None, setup=None):
@@ -296,7 +296,7 @@ class Connection(object):
         url = self.url + path
         body = kwargs.pop('body', None)
         headers = kwargs.pop('headers', None)
-        _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
+        return _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
 
 
 def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, setup, handler, trace, kwargs):
