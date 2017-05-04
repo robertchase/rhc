@@ -181,10 +181,10 @@ class Parser(object):
 
     def act_add_server(self):
         server = Server(*self.args, **self.kwargs)
-        if server.port in self.servers:
+        if server.port in [s.port for s in self.servers.values()]:
             self.error = 'duplicate SERVER port: %s' % server.port
         else:
-            self.servers[server.port] = server
+            self.servers[server.name] = server
             self.server = server
             self._add_config('server.%s.port' % server.name, value=server.port, validator=config_file.validate_int)
             self._add_config('server.%s.is_active' % server.name, value=True, validator=config_file.validate_bool)
@@ -195,10 +195,10 @@ class Parser(object):
     def act_add_old_server(self):
         name = self.args[0]
         server = Server(name, self._config_servers.get(name), **self.kwargs)
-        if server.port in self.servers:
+        if server.port in [s.port for s in self.servers.values()]:
             self.error = 'duplicate SERVER port: %s' % server.port
         else:
-            self.servers[server.port] = server
+            self.servers[server.name] = server
             self.server = server
             self._add_config('%s.port' % server.name, value=server.port, validator=config_file.validate_int)
             self._add_config('%s.is_active' % server.name, value=True, validator=config_file.validate_bool)
@@ -353,42 +353,3 @@ class Optional(object):
 
     def __repr__(self):
         return 'Optional[name=%s, dft=%s, cfg=%s]' % (self.name, self.default, self.config)
-
-
-if __name__ == '__main__':
-    import argparse
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-
-    parser = argparse.ArgumentParser(
-        description='parse a micro file',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument('--config', default='config', help='configuration file')
-    parser.add_argument('--no-config', dest='no_config', default=False, action='store_true', help="don't use a config file")
-    parser.add_argument('--micro', default='micro', help='micro description file')
-    parser.add_argument('-c', '--config-only', dest='config_only', action='store_true', default=False, help='parse micro and config files and display config values')
-    args = parser.parse_args()
-
-    parser = Parser.parse()
-    # print parser.servers
-    # print parser.connections
-    print parser.config
-    print('setup', parser.setup)
-    print('teardown', parser.teardown)
-    '''
-    micro.load(micro=args.micro, config=args.config if args.no_config is False else None)
-
-    if args.config_only:
-        print(micro.config)
-    else:
-        micro.start()
-        while True:
-            try:
-                micro.service()
-            except KeyboardInterrupt:
-                log.info('Received shutdown command from keyboard')
-                break
-            except Exception:
-                log.exception('exception encountered')
-    '''
