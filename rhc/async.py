@@ -150,12 +150,6 @@ class Connection(object):
         problem. This class can be instantiated at startup with default values
         for a connection, allowing fewer required values at connection start.
 
-        A simple example:
-
-            con = Connection('https://somewhere:12345')
-            ...
-            con.get(on_ping, '/ping')
-
         Parameters:
 
             url - base url for connection destination
