@@ -234,7 +234,6 @@ class DAO(object):
             return the members of cls with a foreign_key reference to self.
 
             the query is constructed as 'WHERE <cls.TABLE>.<self.TABLE>_id = <self.id>'
-            and self is joined (using the join method) to each child
 
             a lazy cache is maintained (query is done at most one time).
         '''
@@ -242,7 +241,7 @@ class DAO(object):
             return []  # can't have children if we haven't been saved yet
         child = cls.TABLE
         if child not in self._children:
-            self._children[child] = [c.join(self) for c in cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)]
+            self._children[child] = [c for c in cls.query().where('%s.%s_id = %%s' % (child, self.TABLE)).execute(self.id)]
         return self._children[child]
 
     def foreign(self, cls):
