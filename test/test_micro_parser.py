@@ -5,7 +5,7 @@ def test_server():
     p = Parser.parse(['SERVER test 12345'])
     assert p
     assert len(p.servers) == 1
-    assert p.servers[12345].name == 'test'
+    assert p.servers['test'].port == 12345
 
     config = p.config.server.test
     assert config.port == 12345
@@ -20,7 +20,7 @@ def test_route():
         'SERVER test 12345',
         'ROUTE /foo/bar$',
     ])
-    s = p.servers[12345]
+    s = p.servers['test']
     assert len(s.routes) == 1
     r = s.routes[0]
     assert r.pattern == '/foo/bar$'
@@ -35,7 +35,7 @@ def test_crud():
         'POST a.b.c',
         'DELETE a.b.c.d',
     ])
-    s = p.servers[12345]
+    s = p.servers['test']
     r = s.routes[0]
     assert r.methods['get'] == 'a'
     assert r.methods['put'] == 'a.b'
