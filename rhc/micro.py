@@ -65,6 +65,11 @@ def load_connection(filename):
     return p
 
 
+def re_start(p):
+    SERVER.close()
+    setup_servers(p.config, p.servers, p.is_new)
+
+
 def load_config():
     p = parser.parse()
     p.config_load()
