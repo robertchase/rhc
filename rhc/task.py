@@ -40,6 +40,8 @@ class Task(object):
         except Exception as e:
             self.error(str(e))
 
+        return self
+
     def error(self, message):
         self.respond(message, 1)
 
@@ -48,6 +50,11 @@ class Task(object):
             return
         self.is_done = True
         self.callback(rc, result)
+
+
+def wrap(cmd, *args, **kwargs):
+    ''' helper function callback_cmd -> partially executed partial '''
+    return partial(cmd)(*args, **kwargs)
 
 
 def partial(fn):
