@@ -1,5 +1,6 @@
 import imp
 import os
+import re
 
 import rhc.config as config_file
 from rhc.micro_fsm.fsm_micro import create as create_machine
@@ -12,11 +13,14 @@ def to_args(line):
     args = []
     kwargs = {}
     for tok in line.split():
-        if '=' in tok:
-            n, v = tok.split('=', 1)
+        nvp = re.split(r'(?<!\\)=', tok, 1)  # split by first non-escaped equal sign
+        if len(nvp) == 2:
+            n, v = nvp
+            n = n.replace('\=', '=')
+            v = v.replace('\=', '=')
             kwargs[n] = v
         else:
-            args.append(tok)
+            args.append(tok.replace('\=', '='))
     return args, kwargs
 
 
@@ -133,10 +137,13 @@ class Parser(object):
         connection = Connection(*self.args, **self.kwargs)
         if connection.name in self.connections:
             self.error = 'duplicate CONNECTION name: %s' % connection.name
+        elif connection.url is None and connection.code is None:
+            self.error = 'connection must have an url or code defined: %s' % connection.name
         else:
             self.connections[connection.name] = connection
             self.connection = connection
-            self._add_config('connection.%s.url' % connection.name, value=connection.url)
+            if connection.url is not None:
+                self._add_config('connection.%s.url' % connection.name, value=connection.url)
             self._add_config('connection.%s.is_active' % connection.name, value=True, validator=config_file.validate_bool)
             self._add_config('connection.%s.is_debug' % connection.name, value=connection.is_debug, validator=config_file.validate_bool)
             self._add_config('connection.%s.timeout' % connection.name, value=connection.timeout, validator=float)
@@ -270,7 +277,7 @@ class Method(object):
 
 class Connection(object):
 
-    def __init__(self, name, url, is_json=True, is_debug=False, timeout=5.0, handler=None, wrapper=None, setup=None):
+    def __init__(self, name, url=None, is_json=True, is_debug=False, timeout=5.0, handler=None, wrapper=None, setup=None, is_form=False, code=None):
         self.name = name
         self.url = url
         self.is_json = config_file.validate_bool(is_json)
@@ -279,6 +286,8 @@ class Connection(object):
         self.handler = handler
         self.wrapper = wrapper
         self.setup = setup
+        self.is_form = config_file.validate_bool(is_form)
+        self.code = code
 
         self.headers = {}
         self.resources = {}
@@ -319,7 +328,7 @@ class Header(object):
 
 class Resource(object):
 
-    def __init__(self, name, path, method='GET', is_json=None, is_debug=None, trace=None, timeout=None, handler=None, wrapper=None, setup=None):
+    def __init__(self, name, path, method='GET', is_json=None, is_debug=None, trace=None, timeout=None, handler=None, wrapper=None, setup=None, is_form=None):
         self.name = name
         self.path = path
         self.method = method
@@ -330,6 +339,7 @@ class Resource(object):
         self.handler = handler
         self.wrapper = wrapper
         self.setup = setup
+        self.is_form = config_file.validate_bool(is_form) if is_form is not None else None
 
         self.required = []
         self.optional = {}

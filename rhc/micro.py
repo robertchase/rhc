@@ -70,9 +70,9 @@ def re_start(p):
     setup_servers(p.config, p.servers, p.is_new)
 
 
-def load_config():
+def load_config(config='config'):
     p = parser.parse()
-    p.config_load()
+    p.config._load(config)
     return p.config
 
 
@@ -114,10 +114,11 @@ def setup_connections(config, connections):
         for header in c.headers.values():
             headers[header.key] = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else _import(header.code) if header.code else header.default
         conn = async.Connection(
-           conf.url,
+           conf.url if c.url is not None else _import(c.code),
            c.is_json,
            conf.is_debug,
            conf.timeout,
+           c.is_form,
            _import(c.wrapper) if c.wrapper else None,
            _import(c.handler) if c.handler else None,
            _import(c.setup) if c.setup else None,
@@ -138,6 +139,7 @@ def setup_connections(config, connections):
                 resource.is_debug,
                 resource.trace,
                 resource.timeout,
+                resource.is_form,
                 _import(resource.handler) if resource.handler else None,
                 _import(resource.wrapper) if resource.wrapper else None,
                 _import(resource.setup) if resource.setup else None,

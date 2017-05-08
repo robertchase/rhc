@@ -156,10 +156,12 @@ class Connection(object):
             is_json - if True, successful result is json.loads-ed
             is_debug - if True, log.debug message are printed at key points
             timeout - tolerable period of network inactivity in seconds
+            is_form - send content as applicaton/x-www-form-urlencoded
             wrapper - if successful, wrap result in wrapper before callback
-            setup - prepare or modify headers and content before send
-                    setup(headers, content) returns (headers, content)
-                        where - headers is a dict of key: value pairs which is returned as a dict
+            setup - prepare or modify path, headers and content before send
+                    setup(path, headers, content) returns (path, headers, content)
+                        where - path is a string
+                                headers is a dict of key: value pairs which is returned as a dict
                                 content is a dict of coerced parameters which can be returned as anything (eg, XML document)
             handler - handler class for connection
                       a subclass of ConnectionHandler with special logic in setup or evaluate
@@ -180,27 +182,40 @@ class Connection(object):
                 Connection init.
     '''
 
-    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, setup=None, handler=None, headers=None):
-        self.url = url
+    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, is_form=False, wrapper=None, setup=None, handler=None, headers=None):
+        self._url = url
+        if not callable(url):
+            self._parse_url(url)
+        self.is_json = is_json
+        self.is_debug = is_debug
+        self.timeout = timeout
+        self.is_form = is_form
+        self.wrapper = wrapper
+        self.setup = setup
+        self.handler = handler
+        self.headers = headers
+
+    @property
+    def url(self):
+        if callable(self._url):
+            url = self._url()
+            self._parse_url(url)
+            return url
+        return self._url
+
+    def _parse_url(self, url):
         p = _URLParser(url)
         self.host = p.host
         self.address = p.address
         self.port = p.port
         self.is_ssl = p.is_ssl
-        self.is_json = is_json
-        self.is_debug = is_debug
-        self.timeout = timeout
-        self.wrapper = wrapper
-        self.setup = setup
-        self.handler = handler
-        self.headers = headers
 
     def __getattr__(self, name):
         if name.lower() in ('get', 'post', 'put', 'delete'):
             return partial(functools.partial(self.connect, name.upper()))
         raise AttributeError(name)
 
-    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, handler=None, wrapper=None, setup=None):
+    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, is_form=None, handler=None, wrapper=None, setup=None):
         ''' bind a path + method to a name on the Connection
 
             name     - unique attribute name on Connection
@@ -215,6 +230,7 @@ class Connection(object):
             is_debug - override for value on Connection
             trace    - debug dump outbound HTTP document
             timeout  - override for value on Connection
+            is_form  - override for value on Connection
             handler  - override for value on Connection
             wrapper  - override for value on Connection
             setup    - override for value on Connection
@@ -247,14 +263,21 @@ class Connection(object):
         is_json = is_json if is_json is not None else self.is_json
         is_debug = is_debug if is_debug is not None else self.is_debug
         timeout = timeout if timeout is not None else self.timeout
+        is_form = is_form if is_form is not None else self.is_form
         wrapper = wrapper if wrapper is not None else self.wrapper
         handler = handler if handler is not None else self.handler
         setup = setup if setup is not None else self.setup
 
+        if is_form is True:
+            if _headers is None:
+                _headers = {}
+            _headers['Content-Type'] = 'application/x-www-form-urlencoded'
+
         def _resource(callback, *args, **kwargs):
 
-            _is_debug = kwargs.pop('is_debug', is_debug)
-            _timeout = kwargs.pop('timeout', timeout)
+            _is_debug = kwargs.pop('_is_debug', is_debug)
+            _timeout = kwargs.pop('_timeout', timeout)
+            _trace = kwargs.pop('_trace', trace)
 
             if len(args) < len(substitution + required):
                 raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s' % (str(substitution), str(required)))
@@ -273,11 +296,14 @@ class Connection(object):
             if len(body) == 0:
                 body = None
 
-            hdrs = {n: v() if callable(v) else v for n, v in _headers.items()}
+            if _headers is not None:
+                hdrs = {n: v() if callable(v) else v for n, v in _headers.items()}
+            else:
+                hdrs = None
 
             kwargs = {}
 
-            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, trace, kwargs)
+            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
         setattr(self, name, partial(_resource))
 
     def connect(self, method, callback, path, *args, **kwargs):
@@ -332,12 +358,15 @@ class ConnectHandler(HTTPHandler):
 
     def after_init(self):
         if self.context.is_debug:
-            log.debug('starting outbound connection, oid=%s: %s %s', self.id, self.context.method, self.context.url)
+            log.debug('starting outbound connection, oid=%s: %s %s', self.id, self.context.method, self.context.url + self.context.path)
 
     def setup(self):
         context = self.context
         if context.setup:
-            context.headers, context.body = context.setup(context.headers, context.body)
+            context.path, context.headers, context.body = context.setup(context.path, context.headers, context.body)
+
+        if context.headers and context.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and isinstance(context.body, types.DictType):
+            context.body = urlencode(context.body)
 
         if context.body is None:
             if len(context.kwargs) == 0:
