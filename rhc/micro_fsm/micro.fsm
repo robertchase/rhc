@@ -76,6 +76,8 @@ STATE connection
 STATE resource
     ENTER add_resource
     EVENT resource resource
+    EVENT header
+        ACTION add_resource_header
     EVENT required
         ACTION add_required
     EVENT optional

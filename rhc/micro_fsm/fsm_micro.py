@@ -8,6 +8,7 @@ from rhc.fsm.FSM import STATE, EVENT, FSM
 # add_optional
 # add_required
 # add_resource
+# add_resource_header
 # add_route
 # add_server
 # add_setup
@@ -28,5 +29,5 @@ def create(**actions):
   S_server.set_events([EVENT('teardown',[actions['add_teardown']]),EVENT('route',[], S_route),EVENT('server',[actions['add_server']]),EVENT('connection',[], S_connection),EVENT('config',[actions['add_config']]),EVENT('setup',[actions['add_setup']]),])
   S_connection.set_events([EVENT('resource',[], S_resource),EVENT('header',[actions['add_header']]),EVENT('connection',[actions['add_connection']]),EVENT('config',[actions['add_config']]),EVENT('server',[], S_server),])
   S_old_route.set_events([EVENT('get',[actions['add_method']]),EVENT('teardown',[actions['add_teardown']]),EVENT('route',[actions['add_route']]),EVENT('server',[], S_old_server),EVENT('put',[actions['add_method']]),EVENT('post',[actions['add_method']]),EVENT('config',[actions['add_config']]),EVENT('setup',[actions['add_setup']]),EVENT('delete',[actions['add_method']]),])
-  S_resource.set_events([EVENT('resource',[], S_resource),EVENT('teardown',[actions['add_teardown']]),EVENT('optional',[actions['add_optional']]),EVENT('setup',[actions['add_setup']]),EVENT('required',[actions['add_required']]),EVENT('server',[], S_server),EVENT('connection',[], S_connection),EVENT('config',[actions['add_config']]),])
+  S_resource.set_events([EVENT('resource',[], S_resource),EVENT('teardown',[actions['add_teardown']]),EVENT('optional',[actions['add_optional']]),EVENT('setup',[actions['add_setup']]),EVENT('required',[actions['add_required']]),EVENT('server',[], S_server),EVENT('header',[actions['add_resource_header']]),EVENT('connection',[], S_connection),EVENT('config',[actions['add_config']]),])
   return FSM([S_old_init,S_old_server,S_route,S_init,S_server,S_connection,S_old_route,S_resource])

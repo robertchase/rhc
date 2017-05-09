@@ -84,6 +84,7 @@ class Parser(object):
             add_optional=self.act_add_optional,
             add_required=self.act_add_required,
             add_resource=self.act_add_resource,
+            add_resource_header=self.act_add_resource_header,
             add_route=self.act_add_route,
             add_server=self.act_add_server,
             add_setup=self.act_add_setup,
@@ -158,6 +159,17 @@ class Parser(object):
             self.connection.add_header(header)
             if header.config:
                 self._add_config('connection.%s.header.%s' % (self.connection.name, header.config), value=header.default)
+
+    def act_add_resource_header(self):
+        header = Header(*self.args, **self.kwargs)
+        if header.key in self.connection._resource.headers:
+            self.error = 'duplicate resource header: %s' % header.key
+        elif header.default is None and header.config is None and header.code is None:
+            self.error = 'header must have a default, config or code setting: %s' % header.key
+        else:
+            self.connection.add_resource_header(header)
+            if header.config:
+                self._add_config('connection.%s.resource.%s.header.%s' % (self.connection.name, self.connection._resource.name, header.config), value=header.default)
 
     def act_add_method(self):
         self.server.add_method(Method(self.event, *self.args, **self.kwargs))
@@ -306,6 +318,9 @@ class Connection(object):
         self._resource = resource
         self.resources[resource.name] = resource
 
+    def add_resource_header(self, header):
+        self._resource.add_header(header)
+
     def add_required(self, parameter_name):
         self._resource.add_required(parameter_name)
 
@@ -343,6 +358,7 @@ class Resource(object):
 
         self.required = []
         self.optional = {}
+        self.headers = None
 
     def __repr__(self):
         return 'Resource[name=%s, url=%s, req=%s, opt=%s' % (self.name, self.path, self.required, self.optional)
@@ -352,6 +368,11 @@ class Resource(object):
 
     def add_optional(self, optional):
         self.optional[optional.name] = optional
+
+    def add_headers(self, header):
+        if self.headers is None:
+            self.headers = {}
+        self.headers[header.key] = header
 
 
 class Optional(object):
