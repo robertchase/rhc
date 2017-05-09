@@ -439,13 +439,16 @@ class ConnectHandler(HTTPHandler):
             resource=context.path,
             headers=context.headers,
             content=context.body,
+            close=True,
         )
 
     def on_http_send(self, headers, content):
         if self.context.trace:
-            log.debug(headers + content)
+            log.debug('>>> %s %s', headers, content)
 
     def on_data(self, data):
+        if self.context.trace:
+            log.debug('<<< %s', data)
         self.timer.re_start()
         super(ConnectHandler, self).on_data(data)
 
