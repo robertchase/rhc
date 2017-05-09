@@ -52,15 +52,19 @@ def _load(filename):
     return p
 
 
-def load_server(filename):
+def load_server(filename, config=None):
     p = _load(filename)
+    if config:
+        p.config._load(config)
     SERVER.close()
     setup_servers(p.config, p.servers, p.is_new)
     return p
 
 
-def load_connection(filename):
+def load_connection(filename, config=None):
     p = _load(filename)
+    if config:
+        p.config._load(config)
     setup_connections(p.config, p.connections)
     return p
 
