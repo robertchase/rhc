@@ -151,9 +151,7 @@ class Parser(object):
 
     def act_add_header(self):
         header = Header(*self.args, **self.kwargs)
-        if header.key in self.connection.headers:
-            self.error = 'duplicate connection header: %s' % header.key
-        elif header.default is None and header.config is None and header.code is None:
+        if header.default is None and header.config is None and header.code is None:
             self.error = 'header must have a default, config or code setting: %s' % header.key
         else:
             self.connection.add_header(header)
@@ -162,9 +160,7 @@ class Parser(object):
 
     def act_add_resource_header(self):
         header = Header(*self.args, **self.kwargs)
-        if header.key in self.connection._resource.headers:
-            self.error = 'duplicate resource header: %s' % header.key
-        elif header.default is None and header.config is None and header.code is None:
+        if header.default is None and header.config is None and header.code is None:
             self.error = 'header must have a default, config or code setting: %s' % header.key
         else:
             self.connection.add_resource_header(header)
@@ -369,7 +365,7 @@ class Resource(object):
     def add_optional(self, optional):
         self.optional[optional.name] = optional
 
-    def add_headers(self, header):
+    def add_header(self, header):
         if self.headers is None:
             self.headers = {}
         self.headers[header.key] = header

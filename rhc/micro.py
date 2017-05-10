@@ -132,13 +132,16 @@ def setup_connections(config, connections):
             optional = {}
             for option in resource.optional.values():
                 optional[option.name] = config._get('connection.%s.resource.%s.%s' % (c.name, resource.name, option.config)) if option.config else option.default
+            if resource.headers is not None:
+                for header in resource.headers.values():
+                    resource.headers[header.key] = config._get('connection.%s.resource.%s.header.%s' % (c.name, resource.name, header.config)) if header.config else _import(header.code) if header.code else header.default
             conn.add_resource(
                 resource.name,
                 resource.path,
                 resource.method,
                 resource.required,
                 optional,
-                None,
+                resource.headers,
                 resource.is_json,
                 resource.is_debug,
                 resource.trace,
