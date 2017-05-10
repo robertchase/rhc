@@ -74,8 +74,8 @@ def re_start(p):
     setup_servers(p.config, p.servers, p.is_new)
 
 
-def load_config(config='config'):
-    p = parser.parse()
+def load_config(config='config', micro='micro'):
+    p = parser.parse(micro)
     p.config._load(config)
     return p.config
 
