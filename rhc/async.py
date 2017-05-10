@@ -184,6 +184,7 @@ class Connection(object):
 
     def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, is_form=False, wrapper=None, setup=None, handler=None, headers=None):
         self._url = url
+        self._last_url = None
         if not callable(url):
             self._parse_url(url)
         self.is_json = is_json
@@ -199,11 +200,13 @@ class Connection(object):
     def url(self):
         if callable(self._url):
             url = self._url()
-            self._parse_url(url)
+            if url != self._last_url:  # only parse url if new since last time (prevents DNS hit)
+                self._parse_url(url)
             return url
         return self._url
 
     def _parse_url(self, url):
+        self._last_url = url
         p = _URLParser(url)
         self.host = p.host
         self.address = p.address
