@@ -128,6 +128,8 @@ class Parser(object):
             except KeyError:
                 raise Exception("validate must be one of 'int', 'bool', 'file'")
         config = Config(*self.args, **self.kwargs)
+        if config.default and config.validate:
+            config.default = config.validate(config.default)
         self._add_config(config.name, **config.kwargs)
 
     def act_add_config_server(self):
