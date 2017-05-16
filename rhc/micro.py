@@ -1,17 +1,21 @@
 from importlib import import_module
 import logging
+import sys
 import uuid
 
 import rhc.async as async
-from rhc.connections import connection
 import rhc.file_util as file_util
 from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
 from rhc.timer import TIMERS
 
-
 log = logging.getLogger(__name__)
+
+
+class Connections(object):
+    pass
+connection = Connections()
 
 
 class MicroContext(object):
@@ -55,6 +59,7 @@ def load_server(filename, config=None):
     p = _load(filename)
     if config:
         p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     SERVER.close()
     setup_servers(p.config, p.servers, p.is_new)
     return p
@@ -64,6 +69,7 @@ def load_connection(filename, config=None):
     p = _load(filename)
     if config:
         p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     setup_connections(p.config, p.connections)
     return p
 
@@ -76,6 +82,7 @@ def re_start(p):
 def load_config(config='config'):
     p = parser.parse()
     p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     return p.config
 
 
@@ -177,6 +184,7 @@ def stop(teardown):
 
 def launch(micro):
     p = parser.parse(micro)
+    sys.modules[__name__].config = p.config
     setup_servers(p.config, p.servers)
     setup_connections(p.config, p.connections)
     run()
