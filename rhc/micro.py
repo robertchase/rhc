@@ -45,17 +45,16 @@ def _import(item_path, is_module=False):
     return getattr(module, function)
 
 
-def _load(filename):
-    if isinstance(filename, str):
-        filename = file_util.normalize_path(filename, filetype='micro')
-    p = parser.parse(filename)
+def _load(path):
+    path = file_util.normalize_path(path, filetype='micro')
+    p = parser.parse(path)
     return p
 
 
 def load_server(filename, config=None):
     p = _load(filename)
     if config:
-        p.config._load(config)
+        p.config._load(file_util.normalize_path(config))
     SERVER.close()
     setup_servers(p.config, p.servers, p.is_new)
     return p
@@ -64,7 +63,7 @@ def load_server(filename, config=None):
 def load_connection(filename, config=None):
     p = _load(filename)
     if config:
-        p.config._load(config)
+        p.config._load(file_util.normalize_path(config))
     setup_connections(p.config, p.connections)
     return p
 
@@ -76,7 +75,7 @@ def re_start(p):
 
 def load_config(config='config'):
     p = parser.parse()
-    p.config._load(config)
+    p.config._load(file_util.normalize_path(config))
     return p.config
 
 

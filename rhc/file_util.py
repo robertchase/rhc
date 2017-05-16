@@ -4,6 +4,8 @@ import os
 
 def normalize_path(path, filetype=None):
     ''' Convert dot-separated paths to directory paths '''
+    if not isinstance(path, str):
+        return path
     if '.' in path and os.path.sep not in path:  # path is dot separated
         parts = path.split('.')
         extension = ''
