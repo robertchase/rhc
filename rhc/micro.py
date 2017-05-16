@@ -187,6 +187,8 @@ if __name__ == '__main__':
     import argparse
     import logging
 
+    import rhc.micro as module
+
     logging.basicConfig(level=logging.DEBUG)
 
     aparser = argparse.ArgumentParser(
@@ -208,6 +210,7 @@ if __name__ == '__main__':
     if args.config_only is True:
         print p.config
     else:
+        module.config = p.config
         setup_servers(p.config, p.servers, p.is_new)
         if p.is_new:
             setup_connections(p.config, p.connections)
