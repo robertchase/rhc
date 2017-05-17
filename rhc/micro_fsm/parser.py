@@ -24,7 +24,7 @@ def to_args(line):
     return args, kwargs
 
 
-def _prepare_import(import_fname, parent=os.getcwd()):
+def _prepare_import(import_fname):
     if '.' in import_fname and os.path.sep not in import_fname:  # path is dot separated
         parts = import_fname.split('.')
         extension = ''
@@ -34,11 +34,12 @@ def _prepare_import(import_fname, parent=os.getcwd()):
         sink, path, sink = imp.find_module(parts[0])  # use module-based location
         import_fname = os.path.join(path, *parts[1:]) + extension
     elif not import_fname.startswith(os.path.sep):  # path is relative
-        import_fname = os.path.join(parent, import_fname)
+        import_fname = os.path.join(os.getcwd(), import_fname)
     return import_fname
 
 
 def load(micro='micro', files=None, lines=None):
+
     if files is None:
         files = []
     if lines is None:
@@ -63,7 +64,7 @@ def load(micro='micro', files=None, lines=None):
             if len(line) == 1:
                 raise Exception('too few tokens, file=%s, line=%d' % (fname, num))
             if line[0].lower() == 'import':
-                import_fname = _prepare_import(line[1], os.path.dirname(fname))
+                import_fname = _prepare_import(line[1])
                 load(import_fname, files, lines)
             else:
                 lines.append((fname, num, line[0], line[1]))
