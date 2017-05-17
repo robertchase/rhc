@@ -1,8 +1,7 @@
-import imp
-import os
 import re
 
 import rhc.config as config_file
+from rhc.file_util import normalize_path
 from rhc.micro_fsm.fsm_micro import create as create_machine
 
 import logging
@@ -22,20 +21,6 @@ def to_args(line):
         else:
             args.append(tok.replace('\=', '='))
     return args, kwargs
-
-
-def _prepare_import(import_fname):
-    if '.' in import_fname and os.path.sep not in import_fname:  # path is dot separated
-        parts = import_fname.split('.')
-        extension = ''
-        if parts[-1] == 'micro':
-            parts = parts[:-1]  # save '.micro' extension if exists
-            extension = '.micro'
-        sink, path, sink = imp.find_module(parts[0])  # use module-based location
-        import_fname = os.path.join(path, *parts[1:]) + extension
-    elif not import_fname.startswith(os.path.sep):  # path is relative
-        import_fname = os.path.join(os.getcwd(), import_fname)
-    return import_fname
 
 
 def load(micro='micro', files=None, lines=None):
@@ -64,7 +49,7 @@ def load(micro='micro', files=None, lines=None):
             if len(line) == 1:
                 raise Exception('too few tokens, file=%s, line=%d' % (fname, num))
             if line[0].lower() == 'import':
-                import_fname = _prepare_import(line[1])
+                import_fname = normalize_path(line[1], 'micro')
                 load(import_fname, files, lines)
             else:
                 lines.append((fname, num, line[0], line[1]))
