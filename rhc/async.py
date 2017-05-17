@@ -457,7 +457,7 @@ class ConnectHandler(HTTPHandler):
 
     def evaluate(self):
         status = self.http_status_code
-        result = self.http_content
+        result = self.http_headers if self.context.method == 'HEAD' else self.http_content
         if status < 200 or status >= 300:
             return self.done(self.http_status_message if result == '' else result, 1)
         return result

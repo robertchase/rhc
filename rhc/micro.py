@@ -1,17 +1,21 @@
 from importlib import import_module
 import logging
+import sys
 import uuid
 
 import rhc.async as async
-from rhc.connections import connection
 import rhc.file_util as file_util
 from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
 from rhc.timer import TIMERS
 
-
 log = logging.getLogger(__name__)
+
+
+class Connections(object):
+    pass
+connection = Connections()
 
 
 class MicroContext(object):
@@ -45,17 +49,17 @@ def _import(item_path, is_module=False):
     return getattr(module, function)
 
 
-def _load(filename):
-    if isinstance(filename, str):
-        filename = file_util.normalize_path(filename, filetype='micro')
-    p = parser.parse(filename)
+def _load(path):
+    path = file_util.normalize_path(path, filetype='micro')
+    p = parser.parse(path)
     return p
 
 
 def load_server(filename, config=None):
     p = _load(filename)
     if config:
-        p.config._load(config)
+        p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     SERVER.close()
     setup_servers(p.config, p.servers, p.is_new)
     return p
@@ -64,7 +68,8 @@ def load_server(filename, config=None):
 def load_connection(filename, config=None):
     p = _load(filename)
     if config:
-        p.config._load(config)
+        p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     setup_connections(p.config, p.connections)
     return p
 
@@ -76,7 +81,8 @@ def re_start(p):
 
 def load_config(config='config'):
     p = parser.parse()
-    p.config._load(config)
+    p.config._load(file_util.normalize_path(config))
+    sys.modules[__name__].config = p.config
     return p.config
 
 
@@ -178,6 +184,7 @@ def stop(teardown):
 
 def launch(micro):
     p = parser.parse(micro)
+    sys.modules[__name__].config = p.config
     setup_servers(p.config, p.servers)
     setup_connections(p.config, p.connections)
     run()
@@ -186,6 +193,8 @@ def launch(micro):
 if __name__ == '__main__':
     import argparse
     import logging
+
+    import rhc.micro as module
 
     logging.basicConfig(level=logging.DEBUG)
 
@@ -208,6 +217,7 @@ if __name__ == '__main__':
     if args.config_only is True:
         print p.config
     else:
+        module.config = p.config
         setup_servers(p.config, p.servers, p.is_new)
         if p.is_new:
             setup_connections(p.config, p.connections)
