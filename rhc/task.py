@@ -52,9 +52,25 @@ class Task(object):
         self.callback(rc, result)
 
 
-def wrap(cmd, *args, **kwargs):
+def wrap(callback_cmd, *args, **kwargs):
     ''' helper function callback_cmd -> partially executed partial '''
-    return partial(cmd)(*args, **kwargs)
+    return partial(callback_cmd)(*args, **kwargs)
+
+
+def from_callback(task_cmd):
+    ''' helper function callback_cmd -> executing partial
+
+        if the caller invokes the wrapped or decorated task_cmd
+        using a standard callback syntax:
+
+            task_cmd(callback, *args, **kwargs)
+
+        then a task is generated from the callback, and a partial
+        is immediately started.
+    '''
+    def _wrap(callback, *args, **kwargs):
+        return partial(task_cmd)(*args, **kwargs)(callback)
+    return _wrap
 
 
 def partial(fn):
