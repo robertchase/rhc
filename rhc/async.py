@@ -294,7 +294,7 @@ class Connection(object):
             body = {}
             if len(_args):
                 body = dict(zip(required, _args))
-            body.update(optional)
+            body.update({k: v for k, v in optional.items() if v is not None})
             body.update(kwargs)
             if len(body) == 0:
                 body = None
