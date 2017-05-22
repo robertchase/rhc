@@ -122,7 +122,9 @@ def setup_connections(config, connections):
         conf = config._get('connection.%s' % c.name)
         headers = {}
         for header in c.headers.values():
-            headers[header.key] = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else _import(header.code) if header.code else header.default
+            value = config._get('connection.%s.header.%s' % (c.name, header.config)) if header.config else _import(header.code) if header.code else header.default
+            if value:
+                headers[header.key] = value
         conn = async.Connection(
            conf.url if c.url is not None else _import(c.code),
            c.is_json,
