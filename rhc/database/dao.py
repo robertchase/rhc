@@ -255,6 +255,8 @@ class DAO(object):
         foreign = cls.TABLE
         if foreign not in self._tables:
             foreign_id = getattr(self, '%s_id' % foreign)
+            if not foreign_id:
+                return None
             self.join(cls.query().where('%s.id = %%s' % foreign).execute(foreign_id, one=True))
         return self._tables[foreign]
 
