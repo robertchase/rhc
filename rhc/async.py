@@ -196,6 +196,8 @@ class Connection(object):
         self.handler = handler
         self.headers = headers
 
+        self.mock = None
+
     @property
     def url(self):
         if callable(self._url):
@@ -217,6 +219,10 @@ class Connection(object):
         if name.lower() in ('get', 'post', 'put', 'delete'):
             return partial(functools.partial(self.connect, name.upper()))
         raise AttributeError(name)
+
+    @property
+    def is_mock(self):
+        return self.mock is not None
 
     def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, is_form=None, handler=None, wrapper=None, setup=None):
         ''' bind a path + method to a name on the Connection
@@ -306,8 +312,21 @@ class Connection(object):
 
             kwargs = {}
 
-            return _connect(callback, self.url, self.host, self.address, self.port, _path, self.is_ssl, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
+            return self._connect(callback, name, _path, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
         setattr(self, name, partial(_resource))
+
+    def _connect(self, callback, name, path, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs):
+        if self.is_mock:
+            class Mock(object):
+                def __init__(self):
+                    self.is_done = True
+            try:
+                result = getattr(self.mock, name)(method, path, headers, body)
+            except Exception as e:
+                callback(1, str(e))
+            callback(0, result)
+            return Mock()
+        return _connect(callback, self.url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
 
     def connect(self, method, callback, path, *args, **kwargs):
         is_json = kwargs.pop('is_json', self.is_json)
