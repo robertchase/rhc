@@ -86,7 +86,7 @@ class Server (object):
         self._register(s, EVENT_READ, l._do_accept)
         return l
 
-    def add_connection(self, address, handler, context=None, ssl=None):
+    def add_connection(self, address, handler, context=None, ssl=None, certfile=None, cafile=None):
         '''
           Connect to a listening socket.
 
@@ -108,7 +108,12 @@ class Server (object):
         if ssl:
             ssl_ctx = ssl_library.create_default_context()  # ignore the SSLParams, and make our own context
             ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl_library.CERT_NONE
+            if certfile is not None:
+                ssl_ctx.load_cert_chain(certfile)
+            if cafile is not None:
+                ssl_ctx.load_verify_locations(cafile)
+            else:
+                ssl_ctx.verify_mode = ssl_library.CERT_NONE
             h._ssl_ctx = ssl_ctx
         h.after_init()
         try:

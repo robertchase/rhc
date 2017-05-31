@@ -32,7 +32,7 @@ from urllib import urlencode
 from urlparse import urlparse
 
 from rhc.httphandler import HTTPHandler
-from rhc.tcpsocket import SERVER, SSLParam
+from rhc.tcpsocket import SERVER
 from rhc.task import Task
 from rhc.timer import TIMERS
 
@@ -525,7 +525,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             method  : http method
             timeout : max time, in seconds, allowed for network inactivity
             close   : close socket after request complete, boolean
-            ssl_args: dict of kwargs for SSLParam
+            ssl_args: dict of kwargs for add_connection
             recv_len: read buffer size (default = BasicHandler.RECV_LEN)
             event   : dictionary of Handler event callback routines
 
@@ -542,10 +542,12 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
     url = _URLParser(url)
     context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, compress=compress, recv_len=recv_len, event=event)
     if url.is_ssl:
-        ssl = SSLParam(**(ssl_args if ssl_args else {}))
+        ssl = {'ssl': True}
+        if ssl_args:
+            ssl.update(ssl_args)
     else:
         ssl = None
-    SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
+    SERVER.add_connection((url.address, url.port), _Handler, context, **ssl)
 
 
 class RequestCallback(object):
