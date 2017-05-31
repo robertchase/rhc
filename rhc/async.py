@@ -546,7 +546,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
         if ssl_args:
             ssl.update(ssl_args)
     else:
-        ssl = None
+        ssl = {'ssl': False}
     SERVER.add_connection((url.address, url.port), _Handler, context, **ssl)
 
 
