@@ -102,7 +102,7 @@ class Parser(object):
     def _add_config(self, name, **kwargs):
         self.config._define(name, **kwargs)
 
-    def act_add_config(self):
+    def _normalize_validator(self):
         if self.kwargs.get('validate') is not None:
             try:
                 self.kwargs['validate'] = {
@@ -112,6 +112,9 @@ class Parser(object):
                 }[self.kwargs['validate']]
             except KeyError:
                 raise Exception("validate must be one of 'int', 'bool', 'file'")
+
+    def act_add_config(self):
+        self._normalize_validator()
         config = Config(*self.args, **self.kwargs)
         if config.default and config.validate:
             config.default = config.validate(config.default)
@@ -161,10 +164,11 @@ class Parser(object):
         self.connection.add_required(*self.args, **self.kwargs)
 
     def act_add_optional(self):
+        self._normalize_validator()
         optional = Optional(*self.args, **self.kwargs)
         resource = self.connection.add_optional(optional)
         if optional.config:
-            self._add_config('connection.%s.resource.%s.%s' % (self.connection.name, resource.name, optional.config), value=optional.default)
+            self._add_config('connection.%s.resource.%s.%s' % (self.connection.name, resource.name, optional.config), value=optional.default, validator=optional.validate)
 
     def act_add_resource(self):
         resource = Resource(*self.args, **self.kwargs)
@@ -360,10 +364,13 @@ class Resource(object):
 
 class Optional(object):
 
-    def __init__(self, name, default=None, config=None):
+    def __init__(self, name, default=None, config=None, validate=None):
+        if default and validate:
+            default = validate(default)
         self.name = name
         self.default = default
         self.config = config
+        self.validate = validate
 
     def __repr__(self):
         return 'Optional[name=%s, dft=%s, cfg=%s]' % (self.name, self.default, self.config)

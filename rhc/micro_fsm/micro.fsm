@@ -7,7 +7,7 @@
 #   HEADER :key -default=None -config=None -code=None
 #   RESOURCE :name :path -method=GET -is_json=None -is_debug=None -timeout=None -handler=None -setup=None -wrapper=None -setup=None
 #     REQUIRED :name
-#     OPTIONAL :name -default=None, -config=None
+#     OPTIONAL :name -default=None, -config=None -validate=None
 # CONFIG :name default=None, validate=None, env=None
 # SETUP :path
 # TEARDOWN :path
