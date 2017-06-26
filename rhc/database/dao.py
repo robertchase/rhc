@@ -136,7 +136,7 @@ class DAO(object):
         elif name in self.CHILDREN:
             result = self.children(self._import(self.CHILDREN[name]))  # children lookup
         else:
-            raise AttributeError("'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
+            result = self.__getattribute__(name)
         return result
 
     def __getitem__(self, name):
@@ -148,10 +148,6 @@ class DAO(object):
             self.__dict__[name] = value
         else:
             object.__setattr__(self, name, value)
-        # elif isinstance(self.__class__.__dict__[name], property):
-        #     object.__setattr__(self, name, value)
-        # else:
-        #     raise AttributeError('%s is not a valid field name' % name)
 
     def _json(self, value):
         if isinstance(value, (datetime, date)):
