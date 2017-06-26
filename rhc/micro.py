@@ -9,13 +9,9 @@ from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
 from rhc.tcpsocket import SERVER
 from rhc.timer import TIMERS
+from rhc import CONNECTIONS as connection
 
 log = logging.getLogger(__name__)
-
-
-class Connections(object):
-    pass
-connection = Connections()
 
 
 class MicroContext(object):
