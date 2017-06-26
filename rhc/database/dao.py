@@ -136,7 +136,7 @@ class DAO(object):
         elif name in self.CHILDREN:
             result = self.children(self._import(self.CHILDREN[name]))  # children lookup
         else:
-            result = self.__getattribute__(name)
+            result = object.__getattribute__(self, name)
         return result
 
     def __getitem__(self, name):
