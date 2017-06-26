@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
-from db import DB
+from rhc.database.db import DB
 
 
 class Query(object):
@@ -123,7 +123,7 @@ class Query(object):
         primary_table = self._classes[0].TABLE
         for rs in cur:
             s = {}
-            row = zip(self._column_names, rs)
+            row = [t for t in zip(self._column_names, rs)]
             for c in self._classes:
                 l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
                 val, row = row[:l], row[l:]

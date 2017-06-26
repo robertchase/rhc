@@ -25,8 +25,8 @@ from datetime import datetime, date
 from itertools import chain
 import json
 
-from db import DB
-from query import Query
+from rhc.database.db import DB
+from rhc.database.query import Query
 
 
 class DAO(object):
