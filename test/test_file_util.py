@@ -14,5 +14,4 @@ def test_normalize_path():
 def test_normalize_path_with_dots():
     path = 'os.path.dirname'
     answer = normalize_path(path)
-    print(answer)
     assert answer[-18:] == 'os.py/path/dirname'
