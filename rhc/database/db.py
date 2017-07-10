@@ -30,7 +30,7 @@ class _DB(object):
     def __init__(self):
         self.__kwargs = None
         self.__transaction = 0
-        self.__connection = None
+        self.__local = threading.local()
 
     def __enter__(self):
         self.start_transaction()
@@ -42,32 +42,26 @@ class _DB(object):
         else:
             self.stop_transaction()
 
-    def setup(self, dirty=False, database_map=None, commit=True, close=False, delta=True, **kwargs):
+    def setup(self, dirty=False, database_map=None, **kwargs):
         kwargs['autocommit'] = False
         kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED'
         if dirty:
             kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED'
         self.__database_map = database_map if database_map else {}  # {database_from_dao: actual_database_name, ...}
-        self.__commit = commit
-        self.__close = close
-        self.__delta = delta
+        self.__commit = kwargs.pop('commit', True)
+        self.__close = kwargs.pop('close', False)
         self.__kwargs = kwargs
         return self
 
-    @property
-    def  delta(self):
-        ''' only specify changed columns on update '''
-        return self.__delta
-
     def _connection(self):
-        connection = self.__connection
+        connection = getattr(self.__local, 'connection', None)
         if connection:
             connection.ping()
         else:
             if not self.__kwargs:
                 raise Exception('must call setup before using DB')
             connection = pymysql.connect(**self.__kwargs)
-            self.__connection = connection
+            self.__local.connection = connection
         return connection
 
     def close(self):
