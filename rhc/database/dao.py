@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
+import copy
 from datetime import datetime, date
 from itertools import chain
 import json
@@ -49,13 +50,16 @@ class DAO(object):
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
+        self._orig = {} if DB.delta else None
+        self._orig = None
         if 'id' in kwargs:
             self.on_load(kwargs)
+            self._cache_fields()
             self._jsonify(kwargs)
         else:
             self.on_new(kwargs)
-        for n, v in kwargs.items():
-            self.__dict__[n] = v
+            self._cache_fields(jsonify=True)
+        self.__dict__.update(kwargs)
         self.after_init()
 
     @classmethod
@@ -79,6 +83,10 @@ class DAO(object):
 
     def after_init(self):
         pass
+
+    @property
+    def _non_pk_fields(self):
+        return [f for f in self.FIELDS if f not in 'id']
 
     def _foreign(self, kwargs):
         ''' identify and translate foreign key relations
@@ -166,6 +174,23 @@ class DAO(object):
             self.id = id
         return self.save(insert=True)
 
+    def _cache_fields(self, jsonify=False):
+        if self._orig is not None:
+            self._orig = {f: getattr(self, f) for f in self.FIELDS if f != 'id'}
+            if jsonify:
+                for n in self.JSON_FIELDS:
+                    v = self._orig.get(n)
+                    setattr(self._orig, n, json.dumps(self.on_json_save(n, v)))
+
+    @property
+    def _update_fields(self):
+        if self._orig is None:
+            return self._non_pk_fields
+        f = [f for f in self.FIELDS if getattr(self, f) != self._orig.get(f)]
+        if len(f) == 0:
+            return None
+        return f
+
     def save(self, insert=False):
         cache = {}
         for n in self.JSON_FIELDS:
@@ -173,19 +198,28 @@ class DAO(object):
             if v is not None:
                 setattr(self, n, json.dumps(self.on_json_save(n, v)))
         self.before_save()
-        if insert or not hasattr(self, 'id'):
-            self.before_insert()
-        fields = [f for f in self.FIELDS if f != 'id'] + ([] if not insert else ['id'])
-        args = [self.__dict__[f] for f in fields]
+        self._save(insert)
+        self.after_save()
+        self.__dict__.update(cache)
+        return self
 
+    def _save(self, insert=False):
         if insert or not hasattr(self, 'id'):
             new = True
+            self.before_insert()
+            fields = self._non_pk_fields if not insert else self.FIELDS
             stmt = 'INSERT INTO ' + self.FULL_TABLE_NAME() + ' (' + ','.join('`' + f + '`' for f in fields) + ') VALUES (' + ','.join('%s' for n in range(len(fields))) + ')'
+            args = [self.__dict__[f] for f in fields]
         else:
             if 'id' not in self.FIELDS:
                 raise Exception('DAO UPDATE requires that an "id" field be defined')
             new = False
+            fields = self._update_fields
+            if fields is None:
+                self._executed_stmt = self._stmt = None
+                return
             stmt = 'UPDATE ' + self.FULL_TABLE_NAME() + ' SET ' + ','.join(['`%s`=%%s' % n for n in fields]) + ' WHERE id=%s'
+            args = [self.__dict__[f] for f in fields]
             args.append(self.id)
         with DB as cur:
             self._stmt = stmt
@@ -197,14 +231,11 @@ class DAO(object):
                     setattr(self, n, cache[n])
                 raise
             self._executed_stmt = cur._executed
+        self._cache_fields()
         if new:
             if not insert and 'id' in self.FIELDS:
                 setattr(self, 'id', cur.lastrowid)
             self.after_insert()
-        self.after_save()
-        for n in self.JSON_FIELDS:
-            setattr(self, n, cache[n])
-        return self
 
     def on_json_save(self, name, obj):
         return obj
