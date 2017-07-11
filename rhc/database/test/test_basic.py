@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 import pytest
 
 from rhc.database.db import DB
@@ -31,7 +32,7 @@ class Parent(DAO):
     )
 
     CHILDREN = dict(
-        child='rhc.database.test.test.Child',
+        child='rhc.database.test.test_basic.Child',
     )
 
 
@@ -46,7 +47,7 @@ class Child(DAO):
     )
 
     FOREIGN = dict(
-        parent='rhc.database.test.test.Parent',
+        parent='rhc.database.test.test_basic.Parent',
     )
 
     @classmethod
@@ -95,6 +96,12 @@ def test_foreign(_data):
 def test_children(_data):
     p = next(Parent.list())
     c = p.children(Child)
+    assert len(c) == 2
+
+
+def test_children_by_property(_data):
+    p = next(Parent.list())
+    c = p.child
     assert len(c) == 2
 
 
