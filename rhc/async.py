@@ -207,13 +207,23 @@ class Connection(object):
             return url
         return self._url
 
+    @property
+    def is_url_parsed(self):
+        if not hasattr(self, 'host'):
+            self._parse_url(self.url)
+        return hasattr(self, 'host')
+
     def _parse_url(self, url):
-        self._last_url = url
-        p = _URLParser(url)
-        self.host = p.host
-        self.address = p.address
-        self.port = p.port
-        self.is_ssl = p.is_ssl
+        try:
+            p = _URLParser(url)
+        except Exception as e:
+            log.warning("unable to parse '%s': %s", url, str(e))
+        else:
+            self._last_url = url
+            self.host = p.host
+            self.address = p.address
+            self.port = p.port
+            self.is_ssl = p.is_ssl
 
     def __getattr__(self, name):
         if name.lower() in ('get', 'post', 'put', 'delete'):
@@ -326,6 +336,8 @@ class Connection(object):
                 callback(1, str(e))
             callback(0, result)
             return Mock()
+        if not self.is_url_parsed:
+            return None
         return _connect(callback, self.url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
 
     def connect(self, method, callback, path, *args, **kwargs):

@@ -25,6 +25,8 @@ def to_args(line):
 
 def load(micro='micro', files=None, lines=None):
 
+    path = micro
+
     if files is None:
         files = []
     if lines is None:
@@ -49,7 +51,7 @@ def load(micro='micro', files=None, lines=None):
             if len(line) == 1:
                 raise Exception('too few tokens, file=%s, line=%d' % (fname, num))
             if line[0].lower() == 'import':
-                import_fname = normalize_path(line[1], 'micro')
+                import_fname = normalize_path(line[1], 'micro', parent=path)
                 load(import_fname, files, lines)
             else:
                 lines.append((fname, num, line[0], line[1]))
