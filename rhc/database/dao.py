@@ -51,14 +51,13 @@ class DAO(object):
         self._normalize(kwargs)
         self.on_init(kwargs)
         self._orig = {} if DB.delta else None
-        self._orig = None
         if 'id' in kwargs:
             self.on_load(kwargs)
-            self._cache_fields()
+            self._cache_fields(data=kwargs)
             self._jsonify(kwargs)
         else:
             self.on_new(kwargs)
-            self._cache_fields(jsonify=True)
+            self._cache_fields(data=kwargs, jsonify=True)
         self.__dict__.update(kwargs)
         self.after_init()
 
@@ -174,9 +173,18 @@ class DAO(object):
             self.id = id
         return self.save(insert=True)
 
-    def _cache_fields(self, jsonify=False):
+    def _cache_fields(self, data=None, jsonify=False):
+        ''' cache current fields to support updating changed fields only
+
+            data    - dict of data values (else self.__dict__)
+            jsonify - json.dumps JSON_FIELDS in data
+
+            cache is not constructed if self._orig is None (set in __init__)
+        '''
         if self._orig is not None:
-            self._orig = {f: getattr(self, f) for f in self.FIELDS if f != 'id'}
+            if data is None:
+                data = self.__dict__
+            self._orig = {f: data[f] for f in self._non_pk_fields}
             if jsonify:
                 for n in self.JSON_FIELDS:
                     v = self._orig.get(n)
@@ -186,7 +194,7 @@ class DAO(object):
     def _update_fields(self):
         if self._orig is None:
             return self._non_pk_fields
-        f = [f for f in self.FIELDS if getattr(self, f) != self._orig.get(f)]
+        f = [f for f in self._non_pk_fields if getattr(self, f) != self._orig.get(f)]
         if len(f) == 0:
             return None
         return f
@@ -215,6 +223,7 @@ class DAO(object):
                 raise Exception('DAO UPDATE requires that an "id" field be defined')
             new = False
             fields = self._update_fields
+            self._updated_fields = [] if fields is None else fields
             if fields is None:
                 self._executed_stmt = self._stmt = None
                 return
