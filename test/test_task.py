@@ -43,7 +43,7 @@ def test_defer(happy):
     assert happy.worked
 
 
-def test_final(happy):
+def test_final_fn(happy):
     final = {'answer': False}
     def f():
         final['answer'] = True

@@ -30,6 +30,7 @@ class Task(object):
 
     def __init__(self, callback):
         self.callback = callback
+        self.final = None  # callable executed before callback (error or success)
         self.is_done = False
 
     def defer(self, task_cmd, partial_callback, final_fn=None):
@@ -67,6 +68,11 @@ class Task(object):
     def respond(self, result, rc=0):
         if self.is_done:
             return
+        if self.final:
+            try:
+                self.final()
+            except Exception as e:
+                log.warning('failure running task final: %s', str(e))
         self.is_done = True
         self.callback(rc, result)
 
