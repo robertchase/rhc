@@ -75,8 +75,8 @@ def re_start(p):
     setup_servers(p.config, p.servers, p.is_new)
 
 
-def load_config(config='config'):
-    p = parser.parse()
+def load_config(config='config', micro='micro'):
+    p = parser.parse(micro)
     p.config._load(file_util.normalize_path(config))
     sys.modules[__name__].config = p.config
     return p.config
