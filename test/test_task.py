@@ -41,3 +41,13 @@ def test_defer(happy):
     happy.worked = False
     happy.defer(task_cmd, partial_happy)
     assert happy.worked
+
+
+def test_final_fn(happy):
+    final = {'answer': False}
+    def f():
+        final['answer'] = True
+    happy.defer(task_cmd, partial_happy)
+    assert final['answer'] is False
+    happy.defer(task_cmd, partial_happy, final_fn=f)
+    assert final['answer'] is True

@@ -64,7 +64,7 @@ class HTTPHandler(BasicHandler):
         super(HTTPHandler, self).__init__(socket, context)
         self.t_http_data = 0
         self.__data = ''
-        self.__setup()
+        self._setup()
 
         self.http_max_content_length = None
         self.http_max_line_length = 10000
@@ -174,7 +174,7 @@ class HTTPHandler(BasicHandler):
 
         self.__send(headers, content)
 
-    def __setup(self):
+    def _setup(self):
         self.http_message = ''
         self.http_headers = {}
         self.http_content = ''
@@ -327,7 +327,7 @@ class HTTPHandler(BasicHandler):
             self.http_content = self.__data[:self.__length]
             self._on_http_data()
             self.__data = self.__data[self.__length:]
-            self.__setup()
+            self._setup()
             return True
         return False
 
@@ -374,7 +374,7 @@ class HTTPHandler(BasicHandler):
 
         if len(line) == 0:
             self._on_http_data()
-            self.__setup()
+            self._setup()
             return True
 
         test = line.split(':', 1)

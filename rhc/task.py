@@ -22,24 +22,44 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 
+import logging
+log = logging.getLogger(__name__)
+
 
 class Task(object):
 
     def __init__(self, callback):
         self.callback = callback
+        self.final = None  # callable executed before callback (error or success)
         self.is_done = False
 
-    def defer(self, task_cmd, partial_callback):
+    def defer(self, task_cmd, partial_callback, final_fn=None):
+        ''' defer the task until partial_callback completes; then call task_cmd
+
+            if partial_callback does not complete successfully, then task_cmd is not called;
+            instead, the error is handled by calling error on the task. final_fn, if
+            specified, is always called.
+
+            Parameters:
+                task_cmd         - called with result of partial_callback on success
+                                   task_cmd(task, result)
+                partial_callback - function that takes a callback_fn
+                                   callback_fn is eventually called with (rc, result)
+                                   if rc != 0, partial_callback failed
+                final_fn         - a function that is called once after the partial_callback
+                                   is complete. it takes no parameters.
+        '''
         def on_defer(rc, result):
+            if final_fn:
+                try:
+                    final_fn()
+                except Exception as e:
+                    log.warning('failure running final_fn: %s', str(e))
             if rc == 0:
                 task_cmd(self, result)
             else:
                 self.error(result)
-        try:
-            partial_callback(on_defer)
-        except Exception as e:
-            self.error(str(e))
-
+        partial_callback(on_defer)
         return self
 
     def error(self, message):
@@ -48,6 +68,11 @@ class Task(object):
     def respond(self, result, rc=0):
         if self.is_done:
             return
+        if self.final:
+            try:
+                self.final()
+            except Exception as e:
+                log.warning('failure running task final: %s', str(e))
         self.is_done = True
         self.callback(rc, result)
 
@@ -81,3 +106,14 @@ def partial(fn):
             return task
         return _callback
     return _args
+
+
+def catch_exceptions(message):
+    def _catch_exceptions(task_handler):
+        def inner(task, *args, **kwargs):
+            try:
+                return task_handler(task, *args, **kwargs)
+            except Exception:
+                log.exception(message)
+        return inner
+    return _catch_exceptions
