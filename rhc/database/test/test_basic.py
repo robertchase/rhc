@@ -5,14 +5,6 @@ from rhc.database.db import DB
 from rhc.database.dao import DAO
 
 
-@pytest.fixture
-def _db():
-    db = DB.setup(user='test', database='test_rhc', host='mysql', commit=False)
-    db.start_transaction()
-    yield db
-    db.stop_transaction(commit=False)
-
-
 class Parent(DAO):
 
     TABLE = 'parent'
@@ -55,14 +47,14 @@ class Child(DAO):
         return cls.query().where('name=%s').execute(name, one=True)
 
 
-def test_save(_db):
+def test_save(db):
     t = Parent(foo=1, bar=2).save()
     assert t.id is not None
     assert t.foo == 1
     assert t.bar == 2
 
 
-def test_load(_db):
+def test_load(db):
     t = Parent(foo=1, bar=2).save()
     tt = Parent.load(t.id)
     assert t.id == tt.id
@@ -70,42 +62,42 @@ def test_load(_db):
     assert tt.bar == 2
 
 
-def test_default(_db):
+def test_default(db):
     t = Parent(bar=1).save()
     assert t.foo == 0
 
 
-def test_calculated(_db):
+def test_calculated(db):
     t = Parent(foo=1, bar=2).save()
     tt = Parent.load(t.id)
     assert tt.foo_bar == 3
 
 
 @pytest.fixture
-def _data(_db):
+def data(db):
     p = Parent(foo=1, bar=2).save()
     Child(parent=p, name='fred').save()
     Child(parent=p, name='sally').save()
 
 
-def test_foreign(_data):
+def test_foreign(data):
     c = Child.by_name('fred')
     assert c.parent.foo_bar == 3
 
 
-def test_children(_data):
+def test_children(data):
     p = next(Parent.list())
     c = p.children(Child)
     assert len(c) == 2
 
 
-def test_children_by_property(_data):
+def test_children_by_property(data):
     p = next(Parent.list())
     c = p.child
     assert len(c) == 2
 
 
-def test_join(_data):
+def test_join(data):
     rs = Parent.query().join(Child).execute()
     assert len(rs) == 2
     names = [p.child.name for p in rs]
