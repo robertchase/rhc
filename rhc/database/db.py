@@ -103,18 +103,3 @@ class _DB(object):
 
 
 DB = _DB()
-
-if __name__ == '__main__':
-    import time
-    DB.setup(user='test', db='test')
-    cur = DB.cursor()
-    cur.execute('select "foo"')
-    for row in cur:
-        print row
-    time.sleep(5)
-    cur = DB.cursor()
-    cur.execute('select "foo"')
-    for row in cur:
-        print row
-    print DB.cursor()
-    print DB.cursor()

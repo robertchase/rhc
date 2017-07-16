@@ -31,9 +31,10 @@ from socket import gethostbyname
 from urllib import urlencode
 from urlparse import urlparse
 
-from httphandler import HTTPHandler
-from tcpsocket import SERVER, SSLParam
-from timer import TIMERS
+from rhc.httphandler import HTTPHandler
+from rhc.tcpsocket import SERVER
+from rhc.task import Task
+from rhc.timer import TIMERS
 
 
 import logging
@@ -71,7 +72,7 @@ def connect(callback, url, method='GET', body=None, headers=None, is_json=True, 
                header is added.
     '''
     p = _URLParser(url)
-    _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+    _connect(callback, url, p.host, p.address, p.port, p.resource, p.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
 
 
 def partial(fn):
@@ -103,7 +104,7 @@ def partial(fn):
     '''
     def _args(*args, **kwargs):
         def _callback(callback):
-            fn(callback, *args, **kwargs)
+            return fn(callback, *args, **kwargs)
         return _callback
     return _args
 
@@ -122,6 +123,25 @@ def wrap(cmd, *args, **kwargs):
     return partial(cmd)(*args, **kwargs)
 
 
+def wait(partial_cb, callback_fn=None, task_fn=None):
+    ''' helper function to wait for completion of partial_cb '''
+    def cb_fn(rc, result):
+        if rc != 0:
+            raise Exception(result)
+        print result
+    if callback_fn is None:
+        callback_fn = cb_fn
+    if task_fn:
+        def task_cb(rc, result):
+            if rc != 0:
+                callback_fn(rc, result)
+            else:
+                task_fn(Task(callback_fn), result)
+        run(partial_cb(task_cb))
+    else:
+        run(partial_cb(callback_fn))
+
+
 class Connection(object):
     '''
         Wrapper for managing setup data for the connection function.
@@ -130,21 +150,22 @@ class Connection(object):
         problem. This class can be instantiated at startup with default values
         for a connection, allowing fewer required values at connection start.
 
-        A simple example:
-
-            con = Connection('https://somewhere:12345')
-            ...
-            con.get(on_ping, '/ping')
-
-        Pkarameters:
+        Parameters:
 
             url - base url for connection destination
             is_json - if True, successful result is json.loads-ed
             is_debug - if True, log.debug message are printed at key points
             timeout - tolerable period of network inactivity in seconds
+            is_form - send content as applicaton/x-www-form-urlencoded
             wrapper - if successful, wrap result in wrapper before callback
+            setup - prepare or modify path, headers and content before send
+                    setup(path, headers, content) returns (path, headers, content)
+                        where - path is a string
+                                headers is a dict of key: value pairs which is returned as a dict
+                                content is a dict of coerced parameters which can be returned as anything (eg, XML document)
             handler - handler class for connection
                       a subclass of ConnectionHandler with special logic in setup or evaluate
+            headers - dict of headers to be included in all connections
 
         Notes:
 
@@ -161,38 +182,81 @@ class Connection(object):
                 Connection init.
     '''
 
-    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, wrapper=None, handler=None):
-        self.url = url
-        p = _URLParser(url)
-        self.host = p.host
-        self.address = p.address
-        self.port = p.port
-        self.is_ssl = p.is_ssl
+    def __init__(self, url, is_json=True, is_debug=False, timeout=5.0, is_form=False, wrapper=None, setup=None, handler=None, headers=None):
+        self._url = url
+        self._last_url = None
+        if not callable(url):
+            self._parse_url(url)
         self.is_json = is_json
         self.is_debug = is_debug
         self.timeout = timeout
+        self.is_form = is_form
         self.wrapper = wrapper
+        self.setup = setup
         self.handler = handler
+        self.headers = headers
+
+        self.mock = None
+
+    @property
+    def url(self):
+        if callable(self._url):
+            url = self._url()
+            if url != self._last_url:  # only parse url if new since last time (prevents DNS hit)
+                self._parse_url(url)
+            return url
+        return self._url
+
+    @property
+    def is_url_parsed(self):
+        if not hasattr(self, 'host'):
+            self._parse_url(self.url)
+        return hasattr(self, 'host')
+
+    def _parse_url(self, url):
+        try:
+            p = _URLParser(url)
+        except Exception as e:
+            log.warning("unable to parse '%s': %s", url, str(e))
+        else:
+            self._last_url = url
+            self.host = p.host
+            self.address = p.address
+            self.port = p.port
+            self.is_ssl = p.is_ssl
 
     def __getattr__(self, name):
         if name.lower() in ('get', 'post', 'put', 'delete'):
-            return functools.partial(self.connect, name.upper())
+            return partial(functools.partial(self.connect, name.upper()))
         raise AttributeError(name)
 
-    def add_resource(self, name, path, method='GET', required=[], optional=[], **kwargs):
+    @property
+    def is_mock(self):
+        return self.mock is not None
+
+    def add_resource(self, name, path, method='GET', required=[], optional={}, headers=None, is_json=None, is_debug=None, trace=False, timeout=None, is_form=None, handler=None, wrapper=None, setup=None):
         ''' bind a path + method to a name on the Connection
 
-            name - unique attribute name on Connection
-            path - path to resource on connection (see Note 2)
-            method - CRUD method name (default=GET)
+            name     - unique attribute name on Connection
+            path     - path to resource on connection (see Note 2)
+            method   - CRUD method name (default=GET)
             required - list of required positional arguments
                        required arguments will be coerced into a dict and supplied as body
-            optional - list of optional positional arguments
-                       optional arguments will be coerced into a dict along with required
+            optional - dict of optional positional arguments with default values {name: default, ...}
+            headers  - dict of headers
+                       these are added to any headers in the Connection
+            is_json  - override for value on Connection
+            is_debug - override for value on Connection
+            trace    - debug dump outbound HTTP document
+            timeout  - override for value on Connection
+            is_form  - override for value on Connection
+            handler  - override for value on Connection
+            wrapper  - override for value on Connection
+            setup    - override for value on Connection
 
             Notes:
 
-                1. the bound attribute is an async.immediate.
+                1. the bound attribute is an async.partial.
 
                 2. the path can have substitution variables which are a subset of the
                    string.format syntax, for example '/mypath/{my_variable}'. this will
@@ -208,21 +272,73 @@ class Connection(object):
 
         substitution = [t[1] for t in string.Formatter().parse(path) if t[1] is not None]  # grab substitution names
 
-        def _resource(callback, *args, **_kwargs):
-            if len(args) < len(substitution + required) or len(args) > len(substitution + required + optional):
-                raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s, opt=%s' % (str(substitution), str(required), str(optional)))
+        _headers = self.headers
+        if headers is not None:
+            if _headers is None:
+                _headers = headers
+            else:
+                _headers.update(headers)
+
+        is_json = is_json if is_json is not None else self.is_json
+        is_debug = is_debug if is_debug is not None else self.is_debug
+        timeout = timeout if timeout is not None else self.timeout
+        is_form = is_form if is_form is not None else self.is_form
+        wrapper = wrapper if wrapper is not None else self.wrapper
+        handler = handler if handler is not None else self.handler
+        setup = setup if setup is not None else self.setup
+
+        if is_form is True:
+            if _headers is None:
+                _headers = {}
+            _headers['Content-Type'] = 'application/x-www-form-urlencoded'
+
+        def _resource(callback, *args, **kwargs):
+
+            _is_debug = kwargs.pop('_is_debug', is_debug)
+            _timeout = kwargs.pop('_timeout', timeout)
+            _trace = kwargs.pop('_trace', trace)
+
+            if len(args) < len(substitution + required):
+                raise Exception('Incorrect number of arguments supplied, expecting: sub=%s, req=%s' % (str(substitution), str(required)))
             if len(substitution):
                 sub, _args = args[:len(substitution)], args[len(substitution):]
                 _path = path.format(**dict(zip(substitution, sub)))
             else:
-                req = required
-                _args = []
+                _args = args
                 _path = path
-            kwargs.update(_kwargs)
+
+            body = {}
             if len(_args):
-                kwargs['body'] = dict(zip(req + optional, _args))
-            return self.connect(method, callback, self.url + _path, **kwargs)
+                body = dict(zip(required, _args))
+            body.update({k: v for k, v in optional.items() if v is not None})
+            body.update(kwargs)
+            if len(body) == 0:
+                body = None
+
+            if _headers is not None:
+                hdrs = {n: v() if callable(v) else v for n, v in _headers.items()}
+            else:
+                hdrs = None
+
+            kwargs = {}
+
+            return self._connect(callback, name, _path, method, body, hdrs, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
         setattr(self, name, partial(_resource))
+
+    def _connect(self, callback, name, path, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs):
+        if self.is_mock:
+            class Mock(object):
+                def __init__(self):
+                    self.is_done = True
+            try:
+                result = getattr(self.mock, name)(method, path, headers, body)
+            except Exception as e:
+                callback(1, str(e))
+            callback(0, result)
+            return Mock()
+        if not self.is_url_parsed:
+            return None
+        return _connect(callback, self.url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
 
     def connect(self, method, callback, path, *args, **kwargs):
         is_json = kwargs.pop('is_json', self.is_json)
@@ -234,17 +350,17 @@ class Connection(object):
         url = self.url + path
         body = kwargs.pop('body', None)
         headers = kwargs.pop('headers', None)
-        _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs)
+        return _connect(callback, url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, None, handler, False, kwargs)
 
 
-def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, handler, kwargs):
-    c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs)
-    SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
+def _connect(callback, url, host, address, port, path, is_ssl, method, body, headers, is_json, is_debug, timeout, wrapper, setup, handler, trace, kwargs):
+    c = ConnectContext(callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, setup, kwargs, trace)
+    return SERVER.add_connection((address, port), ConnectHandler if handler is None else handler, c, ssl=is_ssl)
 
 
 class ConnectContext(object):
 
-    def __init__(self, callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, kwargs):
+    def __init__(self, callback, url, method, path, host, headers, body, is_json, is_debug, timeout, wrapper, setup, kwargs, trace):
         self.callback = callback
         self.url = url
         self.method = method
@@ -256,10 +372,18 @@ class ConnectContext(object):
         self.is_debug = is_debug
         self.timeout = timeout
         self.wrapper = wrapper
+        self.setup = setup
         self.kwargs = kwargs
+        self.trace = trace
 
 
 class ConnectHandler(HTTPHandler):
+    '''
+        manage outgoing http request as defined by context
+
+        default behavior is defined by setup and evaluate. override these methods to change the shape
+        of the outgoing message or handling of incoming message.
+    '''
 
     def on_init(self):
         self.is_done = False
@@ -268,10 +392,15 @@ class ConnectHandler(HTTPHandler):
 
     def after_init(self):
         if self.context.is_debug:
-            log.debug('starting outbound connection, oid=%s: %s %s', self.id, self.context.method, self.context.url)
+            log.debug('starting outbound connection, oid=%s: %s %s', self.id, self.context.method, self.context.url + self.context.path)
 
     def setup(self):
         context = self.context
+        if context.setup:
+            context.path, context.headers, context.body = context.setup(context.path, context.headers, context.body)
+
+        if context.headers and context.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and isinstance(context.body, types.DictType):
+            context.body = urlencode(context.body)
 
         if context.body is None:
             if len(context.kwargs) == 0:
@@ -288,8 +417,6 @@ class ConnectHandler(HTTPHandler):
                 if context.headers is None:
                     context.headers = {}
                 context.headers['Content-Type'] = 'application/json; charset=utf-8'
-
-        context.send = {'method': context.method, 'host': context.host, 'resource': context.path, 'headers': context.headers, 'content': context.body}
 
     def done(self, result, rc=0):
         if self.is_done:
@@ -335,16 +462,33 @@ class ConnectHandler(HTTPHandler):
         log.warning('ssl error cid=%s: %s', self.id, reason)
 
     def on_ready(self):
+        '''
+            send http request to peer using values from context
+        '''
         self.timer.re_start()
-        self.send(**self.context.send)
+        context = self.context
+        self.send(
+            method=context.method,
+            host=context.host,
+            resource=context.path,
+            headers=context.headers,
+            content=context.body,
+            close=True,
+        )
+
+    def on_http_send(self, headers, content):
+        if self.context.trace:
+            log.debug('>>> %s %s', headers, content)
 
     def on_data(self, data):
+        if self.context.trace:
+            log.debug('<<< %s', data)
         self.timer.re_start()
         super(ConnectHandler, self).on_data(data)
 
     def evaluate(self):
         status = self.http_status_code
-        result = self.http_content
+        result = self.http_headers if self.context.method == 'HEAD' else self.http_content
         if status < 200 or status >= 300:
             return self.done(self.http_status_message if result == '' else result, 1)
         return result
@@ -361,7 +505,10 @@ class ConnectHandler(HTTPHandler):
                 return self.done(str(e), 1)
 
         if self.context.wrapper and result is not None:
-            result = self.context.wrapper(result)
+            try:
+                result = self.context.wrapper(result)
+            except Exception as e:
+                self.done(str(e), 1)
 
         self.done(result)
 
@@ -390,7 +537,7 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
             method  : http method
             timeout : max time, in seconds, allowed for network inactivity
             close   : close socket after request complete, boolean
-            ssl_args: dict of kwargs for SSLParam
+            ssl_args: dict of kwargs for add_connection
             recv_len: read buffer size (default = BasicHandler.RECV_LEN)
             event   : dictionary of Handler event callback routines
 
@@ -407,10 +554,12 @@ def request(url, callback, content='', headers=None, method='GET', timeout=5.0, 
     url = _URLParser(url)
     context = _Context(host=url.host, resource=url.resource, callback=callback, content=content, headers=headers, method=method, timeout=timeout, close=close, compress=compress, recv_len=recv_len, event=event)
     if url.is_ssl:
-        ssl = SSLParam(**(ssl_args if ssl_args else {}))
+        ssl = {'ssl': True}
+        if ssl_args:
+            ssl.update(ssl_args)
     else:
-        ssl = None
-    SERVER.add_connection((url.address, url.port), _Handler, context, ssl=ssl)
+        ssl = {'ssl': False}
+    SERVER.add_connection((url.address, url.port), _Handler, context, **ssl)
 
 
 class RequestCallback(object):

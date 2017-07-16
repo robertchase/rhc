@@ -86,7 +86,7 @@ class Server (object):
         self._register(s, EVENT_READ, l._do_accept)
         return l
 
-    def add_connection(self, address, handler, context=None, ssl=None):
+    def add_connection(self, address, handler, context=None, ssl=None, certfile=None, cafile=None):
         '''
           Connect to a listening socket.
 
@@ -108,7 +108,12 @@ class Server (object):
         if ssl:
             ssl_ctx = ssl_library.create_default_context()  # ignore the SSLParams, and make our own context
             ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl_library.CERT_NONE
+            if certfile is not None:
+                ssl_ctx.load_cert_chain(certfile)
+            if cafile is not None:
+                ssl_ctx.load_verify_locations(cafile)
+            else:
+                ssl_ctx.verify_mode = ssl_library.CERT_NONE
             h._ssl_ctx = ssl_ctx
         h.after_init()
         try:
@@ -514,7 +519,9 @@ class BasicHandler (object):
                     self._network._set_pending(self._do_read)  # give buffered ssl data another chance
 
     def _do_write(self, data=None):
-        data = data if data is not None else self._sending
+        if data is None:
+            data = self._sending
+            self._sending = ''
         if not data:
             self.close_reason = 'logic error in handler'
             self.close()
@@ -538,7 +545,6 @@ class BasicHandler (object):
         else:
             self.txByteCount += l
             if l == len(data):
-                self._sending = ''
                 self._network._register(self._sock, EVENT_READ, self._do_read)
                 self.on_send_complete()
             else:
@@ -546,8 +552,8 @@ class BasicHandler (object):
                     we couldn't send all the data. buffer the remainder in self._sending and start
                     waiting for the socket to be writable again (EVENT_WRITE).
                 '''
-                self._sending += data[l:]
-                self._register(self._sock, EVENT_WRITE, self._do_write)
+                self._sending = data[l:]
+                self._network._register(self._sock, EVENT_WRITE, self._do_write)
     # --- I/O
     # ---
     # ---
