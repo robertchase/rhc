@@ -1,3 +1,26 @@
+'''
+The MIT License (MIT)
+
+Copyright (c) 2013-2017 Robert H Chase
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+'''
 import datetime
 import heapq
 import time
@@ -36,9 +59,7 @@ class Timer(object):
 
         cancel   - expire a running timer without executing the action routine.
 
-        ---
-
-        delete   - same as cancel (for backward compatibility)
+        delete   - same as cancel (for backward compatablity)
     '''
 
     def __init__(self):
@@ -63,15 +84,15 @@ class Timer(object):
             Parameters:
                 duration - time, in ms, that the timer runs
                 action - code to execute when timer expires
-                kwargs - for backward compatibility
+                kwargs - ignored (for backward compatability)
             Return    :
                 unstarted Timer instance
+
+            This method can be called with action and duration
+            flipped in order to support the old-style signature.
         '''
-
-        # for backward compatibility
-        if isinstance(action, int):
+        if isinstance(action, (int, float)):
             action, duration = duration, action
-
         return SimpleTimer(self._list, action, duration)
 
     def add_backoff(self, action, initial, maximum, multiplier=2):
@@ -117,7 +138,7 @@ class SimpleTimer(object):
         self.is_running = False
 
     def __repr__(self):
-        return 'Simple[d=%s, r=%s]' % (self._duration, (self._expiration - time.time()) * 1000)
+        return 'Simple[d=%s, r=%s]' % (self._duration, (self._expiration - time.time()) * 1000.0)
 
     def __eq__(self, other):
         return self._expiration == other._expiration
@@ -185,7 +206,7 @@ class BackoffTimer(SimpleTimer):
         self._multiplier = multiplier
 
     def __repr__(self):
-        return 'Backoff[d=%s, r=%s]' % (self._backoff_duration, (self._expiration - time.time()) * 1000)
+        return 'Backoff[d=%s, r=%s]' % (self._backoff_duration, (self._expiration - time.time()) * 1000.0)
 
     def _calc_expiration(self):
         if self._backoff_duration is None or self._is_restarting:
@@ -205,13 +226,13 @@ class HourlyTimer(SimpleTimer):
     def __repr__(self):
         r = self._expiration - time.time()
         rm = int(r / 60)
-        rs = int((r - rm * 60) * 1000) / 1000
+        rs = int((r - rm * 60) * 1000.0) / 1000.0
         return 'Hourly[r=%s:%06.3f]' % (rm, rs)
 
     def _calc_expiration(self):
         now = datetime.datetime.now()
         next_hour = datetime.datetime(now.year, now.month, now.day, now.hour) + datetime.timedelta(hours=1)
-        self._duration = (next_hour - now).total_seconds() * 1000
+        self._duration = (next_hour - now).total_seconds() * 1000.0
         return time.time() + (self._duration / 1000.0)
 
 
