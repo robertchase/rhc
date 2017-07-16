@@ -42,7 +42,7 @@ class _DB(object):
         else:
             self.stop_transaction()
 
-    def setup(self, dirty=False, database_map=None, commit=True, close=False, delta=True, **kwargs):
+    def setup(self, dirty=False, database_map=None, commit=True, close=False, delta=False, **kwargs):
         kwargs['autocommit'] = False
         kwargs['init_command'] = 'SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED'
         if dirty:
@@ -106,6 +106,12 @@ class _DB(object):
         cur = self.cursor()
         cur.execute('SHOW TABLES')
         return [tablename for (tablename,) in cur]
+
+    @property
+    def now(self):
+        cur = self.cursor()
+        cur.execute('SELECT NOW()')
+        return cur.fetchall()[0][0]
 
 
 DB = _DB()
