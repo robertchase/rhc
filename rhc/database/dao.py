@@ -188,7 +188,7 @@ class DAO(object):
             if jsonify:
                 for n in self.JSON_FIELDS:
                     v = self._orig.get(n)
-                    setattr(self._orig, n, json.dumps(self.on_json_save(n, v)))
+                    self._orig[n] = json.dumps(self.on_json_save(n, v))
 
     @property
     def _update_fields(self):
@@ -205,10 +205,12 @@ class DAO(object):
             v = cache[n] = getattr(self, n)
             if v is not None:
                 setattr(self, n, json.dumps(self.on_json_save(n, v)))
-        self.before_save()
-        self._save(insert)
-        self.after_save()
-        self.__dict__.update(cache)
+        try:
+            self.before_save()
+            self._save(insert)
+            self.after_save()
+        finally:
+            self.__dict__.update(cache)
         return self
 
     def _save(self, insert=False):
@@ -233,12 +235,7 @@ class DAO(object):
         with DB as cur:
             self._stmt = stmt
             self._executed_stmt = None
-            try:
-                cur.execute(stmt, args)
-            except Exception:
-                for n in self.JSON_FIELDS:
-                    setattr(self, n, cache[n])
-                raise
+            cur.execute(stmt, args)
             self._executed_stmt = cur._executed
         self._cache_fields()
         if new:
