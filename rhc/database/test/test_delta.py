@@ -1,6 +1,5 @@
 import pytest
 
-from rhc.database.db import DB
 from rhc.database.dao import DAO
 
 
