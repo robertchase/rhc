@@ -120,7 +120,8 @@ class HTTPHandler(BasicHandler):
 
     def __send(self, headers, content):
         self.on_http_send(headers, content)
-        data = (headers, content) if content else (headers,)
+        if isinstance(headers, unicode):
+            headers = headers.encode('utf8')
         data = headers + content
         super(HTTPHandler, self).send(data)
 
