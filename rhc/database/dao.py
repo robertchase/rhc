@@ -24,6 +24,7 @@ THE SOFTWARE.
 from datetime import datetime, date
 from itertools import chain
 import json
+import weakref
 
 from rhc.database.db import DB
 from rhc.database.query import Query
@@ -43,7 +44,7 @@ class DAO(object):
 
     def __init__(self, **kwargs):
         self.before_init(kwargs)
-        self._tables = {}
+        self._tables = {}  # cached weakrefs for foreign or Query.join added object
         self._children = {}
         self._foreign(kwargs)
         self._validate(kwargs)
@@ -134,7 +135,7 @@ class DAO(object):
 
     def __getattr__(self, name):
         if name in self._tables:
-            result = self._tables[name]  # cached foreign or Query.join added object
+            result = self._tables[name]()  # cached foreign or Query.join added object
         elif name in self.FOREIGN:
             result = self.foreign(self._import(self.FOREIGN[name]))  # foreign lookup
         elif name in self._children:
@@ -290,7 +291,7 @@ class DAO(object):
             if not foreign_id:
                 return None
             self.join(cls.query().where('%s.id = %%s' % foreign).execute(foreign_id, one=True))
-        return self._tables[foreign]
+        return self._tables[foreign]()
 
     @property
     def is_new(self):
@@ -322,7 +323,7 @@ class DAO(object):
             self
         '''
         if obj:
-            self._tables[obj.TABLE] = obj
+            self._tables[obj.TABLE] = weakref.ref(obj)
             obj._tables = self._tables
         return self
 
