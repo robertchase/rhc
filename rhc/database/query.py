@@ -115,20 +115,20 @@ class Query(object):
         return result
 
     def _execute(self, stmt, arg, after_execute):
-        cur = DB.cursor()
-        cur.execute(stmt, arg)
-        self._executed_stmt = cur._executed
-        if after_execute:
-            after_execute(self)
-        primary_table = self._classes[0].TABLE
-        for rs in cur:
-            s = {}
-            row = [t for t in zip(self._column_names, rs)]
-            for c in self._classes:
-                l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
-                val, row = row[:l], row[l:]
-                o = c(**dict(val))
-                s[c.TABLE] = o
-                o._tables = s
-            yield s[primary_table]
-        return
+        with DB as cur:
+            cur.execute(stmt, arg)
+            self._executed_stmt = cur._executed
+            if after_execute:
+                after_execute(self)
+            primary_table = self._classes[0].TABLE
+            for rs in cur:
+                s = {}
+                row = [t for t in zip(self._column_names, rs)]
+                for c in self._classes:
+                    l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
+                    val, row = row[:l], row[l:]
+                    o = c(**dict(val))
+                    s[c.TABLE] = o
+                    o._tables = s
+                yield s[primary_table]
+            return
