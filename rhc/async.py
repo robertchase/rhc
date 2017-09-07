@@ -690,8 +690,8 @@ class _Handler(HTTPHandler):
 
     def on_http_data(self):
         self.context.timer.delete()
-        self.callback.success(self)
         self.context.done = True
+        self.callback.success(self)
 
 
 class _URLParser(object):
