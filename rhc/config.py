@@ -148,7 +148,7 @@ class Config (object):
 
         for lineno, line in enumerate(config, start=1):
 
-            m = re.match(r'(.*?[^\\])?#', line)  # look for first non-escaped comment indicator ('#')
+            m = re.match(r'(.*?[^\\])??#', line)  # look for first non-escaped comment indicator ('#')
             if m:
                 line = m.group(1) if m.group(1) is not None else ''  # grab everything before the '#' (could be None if full-line comment)
             line = line.replace('\#', '#')

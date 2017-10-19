@@ -4,3 +4,6 @@ server.port =1000
 server.url=one\#two#three
 server.akk=one\#asdf
 server.eek=one\#
+#server.comment1=ab#c
+server.comment2=ab#c#def
+server.comment3=ab\#c#def
