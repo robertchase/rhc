@@ -85,13 +85,13 @@ def test_foreign(data):
 
 
 def test_children(data):
-    p = next(Parent.list())
+    p = Parent.list()[0]
     c = p.children(Child)
     assert len(c) == 2
 
 
 def test_children_by_property(data):
-    p = next(Parent.list())
+    p = Parent.list()[0]
     c = p.child
     assert len(c) == 2
 
