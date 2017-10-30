@@ -22,7 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 import pymysql
-import threading
 
 
 class _DB(object):
@@ -55,7 +54,7 @@ class _DB(object):
         return self
 
     @property
-    def  delta(self):
+    def delta(self):
         ''' only specify changed columns on update '''
         return self.__delta
 

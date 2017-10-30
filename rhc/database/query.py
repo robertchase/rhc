@@ -101,7 +101,9 @@ class Query(object):
             stmt += ' FOR UPDATE'
         return stmt
 
-    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, generator=False, before_execute=None, after_execute=None):
+    def execute(self, arg=None, one=False, limit=None, offset=None,
+                for_update=False, generator=False, before_execute=None,
+                after_execute=None):
         self._stmt = self._build(one, limit, offset, for_update)
         self._executed_stmt = None
         if before_execute:
