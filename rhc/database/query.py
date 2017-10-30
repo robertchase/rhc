@@ -101,26 +101,29 @@ class Query(object):
             stmt += ' FOR UPDATE'
         return stmt
 
-    def execute(self, arg=None, one=False, limit=None, offset=None, for_update=False, generator=False, before_execute=None, after_execute=None):
+    def execute(self, arg=None, one=False, limit=None, offset=None,
+                for_update=False, generator=False, before_execute=None,
+                after_execute=None):
         self._stmt = self._build(one, limit, offset, for_update)
         self._executed_stmt = None
         if before_execute:
             before_execute(self)
         g = self._execute(self._stmt, arg, after_execute)
-        if generator:
-            return g
+        # if generator:  # Deprecated
+        #     return g
         result = [o for o in g]
         if one:
             result = result[0] if len(result) else None
         return result
 
     def _execute(self, stmt, arg, after_execute):
-        cur = DB.cursor()
-        cur.execute(stmt, arg)
+        with DB as cur:
+            cur.execute(stmt, arg)
         self._executed_stmt = cur._executed
         if after_execute:
             after_execute(self)
         primary_table = self._classes[0].TABLE
+        out = []
         for rs in cur:
             s = {}
             row = [t for t in zip(self._column_names, rs)]
@@ -130,5 +133,5 @@ class Query(object):
                 o = c(**dict(val))
                 s[c.TABLE] = o
                 o._tables = s
-            yield s[primary_table]
-        return
+            out.append(s[primary_table])
+        return out
