@@ -109,8 +109,8 @@ class Query(object):
         if before_execute:
             before_execute(self)
         g = self._execute(self._stmt, arg, after_execute)
-        if generator:
-            return g
+        # if generator:  # Deprecated
+        #     return g
         result = [o for o in g]
         if one:
             result = result[0] if len(result) else None
@@ -119,18 +119,19 @@ class Query(object):
     def _execute(self, stmt, arg, after_execute):
         with DB as cur:
             cur.execute(stmt, arg)
-            self._executed_stmt = cur._executed
-            if after_execute:
-                after_execute(self)
-            primary_table = self._classes[0].TABLE
-            for rs in cur:
-                s = {}
-                row = [t for t in zip(self._column_names, rs)]
-                for c in self._classes:
-                    l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
-                    val, row = row[:l], row[l:]
-                    o = c(**dict(val))
-                    s[c.TABLE] = o
-                    o._tables = s
-                yield s[primary_table]
-            return
+        self._executed_stmt = cur._executed
+        if after_execute:
+            after_execute(self)
+        primary_table = self._classes[0].TABLE
+        out = []
+        for rs in cur:
+            s = {}
+            row = [t for t in zip(self._column_names, rs)]
+            for c in self._classes:
+                l = len(c.FIELDS) + len(c.CALCULATED_FIELDS)
+                val, row = row[:l], row[l:]
+                o = c(**dict(val))
+                s[c.TABLE] = o
+                o._tables = s
+            out.append(s[primary_table])
+        return out
