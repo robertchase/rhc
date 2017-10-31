@@ -4,6 +4,7 @@ import sys
 import uuid
 
 import rhc.async as async
+from rhc.database.db import DB
 import rhc.file_util as file_util
 from rhc.micro_fsm.parser import Parser as parser
 from rhc.resthandler import LoggingRESTHandler, RESTMapper
@@ -26,6 +27,8 @@ class MicroRESTHandler(LoggingRESTHandler):
 
     def __init__(self, socket, context):
         super(MicroRESTHandler, self).__init__(socket, context)
+        if not DB.reset():
+            log.error('transaction not properly closed')
         context = context.context
         self.http_max_content_length = context.http_max_content_length
         self.http_max_line_length = context.http_max_line_length
@@ -190,7 +193,6 @@ def launch(micro):
 
 if __name__ == '__main__':
     import argparse
-    import logging
 
     import rhc.micro as module
 

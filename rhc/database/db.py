@@ -58,16 +58,25 @@ class _DB(object):
         ''' only specify changed columns on update '''
         return self.__delta
 
+    @property
+    def level(self):
+        return self.__transaction
+
+    def reset(self):
+        if self.__connection:
+            self.__connection.close()
+            self.__connection = None
+        if self.__transaction == 0:
+            return True
+        self.__transaction = 0
+        return False
+
     def _connection(self):
-        connection = self.__connection
-        if connection:
-            connection.ping()
-        else:
+        if self.__connection is None:
             if not self.__kwargs:
                 raise Exception('must call setup before using DB')
-            connection = pymysql.connect(**self.__kwargs)
-            self.__connection = connection
-        return connection
+            self.__connection = pymysql.connect(**self.__kwargs)
+        return self.__connection
 
     def close(self):
         self._connection().close()
