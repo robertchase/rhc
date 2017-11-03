@@ -64,7 +64,10 @@ class _DB(object):
 
     def reset(self):
         if self.__connection:
-            self.__connection.close()
+            try:
+                self.__connection.close()
+            except Exception:
+                pass
             self.__connection = None
         if self.__transaction == 0:
             return True

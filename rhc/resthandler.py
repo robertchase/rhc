@@ -30,7 +30,8 @@ import traceback
 import types
 import urlparse
 
-from httphandler import HTTPHandler
+from rhc.database.db import DB
+from rhc.httphandler import HTTPHandler
 
 import logging
 log = logging.getLogger(__name__)
@@ -267,6 +268,11 @@ class RESTHandler(HTTPHandler):
 
 
 class LoggingRESTHandler(RESTHandler):
+
+    def __init__(self, socket, context):
+        super(LoggingRESTHandler, self).__init__(socket, context)
+        if not DB.reset():
+            log.error('transaction not properly closed')
 
     def on_open(self):
         log.info('open: cid=%d, %s', self.id, self.name)
