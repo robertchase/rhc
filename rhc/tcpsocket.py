@@ -33,7 +33,7 @@ EVENT_READ = select.POLLIN | select.POLLPRI
 EVENT_WRITE = select.POLLOUT
 
 
-class Server (object):
+class Server(object):
 
     '''
       Async TCP socket handling for both inbound and outbound connections.
@@ -159,7 +159,7 @@ class Server (object):
         return did_anything
 
     def close(self):
-        for callback, sock in self._poll_map.values():
+        for _, sock in self._poll_map.values():
             try:
                 sock.close()
             except Exception:
@@ -186,7 +186,7 @@ class Server (object):
         processed = False
         self._pending = []
 
-        for sock, mask in self._poll.poll(timeout * 1000):
+        for sock, _ in self._poll.poll(timeout * 1000):
             processed = True
             self._poll_map[sock][0]()
 
@@ -198,7 +198,7 @@ class Server (object):
 SERVER = Server()
 
 
-class SSLParam (object):
+class SSLParam(object):
 
     '''
       For using SSL with a client or server.
@@ -230,7 +230,7 @@ class SSLParam (object):
         self.ca_certs = ca_certs
 
 
-class BasicHandler (object):
+class BasicHandler(object):
 
     '''
       Base class for connection listeners.
@@ -548,10 +548,8 @@ class BasicHandler (object):
                 self._network._register(self._sock, EVENT_READ, self._do_read)
                 self.on_send_complete()
             else:
-                '''
-                    we couldn't send all the data. buffer the remainder in self._sending and start
-                    waiting for the socket to be writable again (EVENT_WRITE).
-                '''
+                # we couldn't send all the data. buffer the remainder in self._sending and start
+                # waiting for the socket to be writable again (EVENT_WRITE).
                 self._sending = data[l:]
                 self._network._register(self._sock, EVENT_WRITE, self._do_write)
     # --- I/O
@@ -581,7 +579,7 @@ class Listener(object):
         self.socket.close()
 
     def _do_accept(self):
-        s, address = self.socket.accept()
+        s, _ = self.socket.accept()
         s.setblocking(False)
         h = self.handler(s, self.context)
         h._network = self.network
