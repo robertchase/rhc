@@ -30,7 +30,7 @@ import traceback
 import types
 import urlparse
 
-from httphandler import HTTPHandler
+from rhc.httphandler import HTTPHandler
 
 import logging
 log = logging.getLogger(__name__)
