@@ -1,5 +1,6 @@
 import json
 from socket import gethostbyname
+import time
 from urllib import urlencode
 import urlparse
 
@@ -15,6 +16,7 @@ log = logging.getLogger(__name__)
 def connect(
             callback,
             url,
+            query=None,
             method='GET',
             body=None,
             headers=None,
@@ -24,6 +26,8 @@ def connect(
             wrapper=None,
             handler=None,
             evaluate=None,
+            debug=False,
+            trace=False,
             **kwargs
         ):
     """ Make an async http connection, executing callback on completion
@@ -32,6 +36,9 @@ def connect(
 
             callback - a callable expecting (rc, result), where rc=0 on success
             url      - full url of the resource being referenced
+                       can include query string
+            query    - optional query string
+                       if dict, urlencoded to string
             method   - http method (default=GET)
             body     - http content (default=None) (see Note 1)
             headers  - http headers as dict (default=None)
@@ -49,6 +56,8 @@ def connect(
             evaluate - callable for http response evaluation (default=None)
                        returns result or raises Exception
                        (see ConnectHandler.evaluate)
+            debug    - log debug messages on start/open/close
+            trace    - log debug sent and recv'd http data
             kwargs   - additional keyword args that might be useful in a
                        ConnectHandler subclass
 
@@ -68,11 +77,15 @@ def connect(
                of the callback.
 
     """
+    if query is not None:
+        if isinstance(query, dict):
+            query = urlencode(query)
+        url = '{}?{}'.format(url, query)
     p = URLParser(url)
     return connect_parsed(callback, url, p.host, p.address, p.port, p.path,
                           p.query, p.is_ssl, method, headers, body, is_json,
-                          is_form, timeout, wrapper, handler, evaluate,
-                          **kwargs)
+                          is_form, timeout, wrapper, handler, evaluate, debug,
+                          trace, **kwargs)
 
 
 def connect_parsed(
@@ -93,10 +106,13 @@ def connect_parsed(
             wrapper,
             handler,
             evaluate,
+            debug,
+            trace,
             **kwargs
         ):
     c = ConnectContext(callback, url, method, path, query, host, headers, body,
-                       is_json, is_form, timeout, wrapper, evaluate, kwargs)
+                       is_json, is_form, timeout, wrapper, evaluate, debug,
+                       trace, kwargs)
     return SERVER.add_connection((address, port), handler or ConnectHandler,
                                  context=c, ssl=is_ssl)
 
@@ -118,6 +134,8 @@ class ConnectContext(object):
                 timeout,
                 wrapper,
                 evaluate,
+                is_debug,
+                is_trace,
                 kwargs
             ):
         self.callback = callback
@@ -134,6 +152,8 @@ class ConnectContext(object):
         self.timeout = timeout
         self.wrapper = wrapper
         self.evaluate = evaluate
+        self.is_debug = is_debug
+        self.is_trace = is_trace
         self.kwargs = kwargs
 
 
@@ -144,14 +164,23 @@ class ConnectHandler(HTTPHandler):
         self.is_done = False
         self.is_timeout = False
         self.setup()
-        self.after_init()
+        self.check_kwargs()
 
-    def after_init(self):
+    def check_kwargs(self):
         kwargs = self.context.kwargs
         if len(kwargs) > 0:
             raise TypeError(
                 'connect() received unexpected keyword argument(s): %s' %
                 str(tuple(kwargs.keys()))
+            )
+
+    def after_init(self):
+        if self.context.is_debug:
+            log.debug(
+                'starting outbound connection, oid=%s: %s %s',
+                self.id,
+                self.context.method,
+                self.context.url + self.context.path
             )
 
     def _form(self, context):
@@ -209,8 +238,35 @@ class ConnectHandler(HTTPHandler):
         self.context.callback(rc, result)
         self.close('transaction complete')
 
+    def on_open(self):
+        if self.context.is_debug:
+            log.debug('open oid=%s: %s', self.id, self.full_address())
+
     def on_close(self):
-        self.done(None)
+        reason = self.close_reason
+        if self.context.is_debug:
+            now = time.time()
+            msg = 'close oid=%s, reason=%s, opn=%.4f,' % (
+                self.id,
+                reason,
+                (self.t_open - self.t_init) if self.t_open else 0,
+            )
+            if self.is_ssl():
+                msg += ' rdy=%.4f,' % (
+                    (self.t_ready - self.t_init) if self.t_ready else 0,
+                )
+            msg += ' dat=%.4f, tot=%.4f, rx=%d, tx=%d' % (
+                (self.t_http_data - self.t_init) if self.t_http_data else 0,
+                now - self.t_init,
+                self.rxByteCount,
+                self.txByteCount,
+            )
+            if self.is_ssl():
+                msg += ', ssl handshake=%s' % (
+                    'success' if self.t_ready else 'fail',
+                )
+            log.debug(msg)
+        self.done(reason)
 
     def on_failed_handshake(self, reason):
         log.warning('ssl error cid=%s: %s', self.id, reason)
@@ -260,9 +316,12 @@ class ConnectHandler(HTTPHandler):
 
     def on_http_data(self):
 
+        if self.context.is_trace:
+            log.debug('recv: %s', self.http_message)
+
         try:
             evaluate = self.context.evaluate or self.evaluate
-            result = evaluate()
+            result = evaluate(self)
         except Exception as e:
             return self.done(str(e), 1)
 
@@ -289,6 +348,12 @@ class ConnectHandler(HTTPHandler):
     def on_timeout(self):
         self.is_timeout = True
         self.done('timeout', 1)
+
+    def on_http_send(self, headers, content):
+        if self.context.is_trace:
+            log.debug('send: %s', headers)
+            if len(content):
+                log.debug('send: %s', content)
 
 
 def run(command, delay=.01, loop=0):
