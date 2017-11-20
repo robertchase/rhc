@@ -13,6 +13,13 @@ PORT = 12344
 URL = 'http://localhost:{}'.format(PORT)
 
 
+@pytest.fixture
+def server():
+    connect.SERVER.add_server(PORT, _TestServer)
+    yield None
+    connect.SERVER.close()
+
+
 def test_failed_to_connect():
 
     def on_complete(rc, result):
@@ -40,14 +47,13 @@ class _TestServer(http.HTTPHandler):
         self.send_server(json.dumps(result))
 
 
-def test_non_json():
+def test_non_json(server):
 
     def on_complete(rc, result):
         assert rc == 0
         assert isinstance(result, str)
         assert json.loads(result)
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -55,10 +61,9 @@ def test_non_json():
             is_json=False,
         )
     )
-    connect.SERVER.close()
 
 
-def test_body():
+def test_body(server):
 
     DATA = 'test'
 
@@ -66,7 +71,6 @@ def test_body():
         assert rc == 0
         assert result['body'] == DATA
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -74,7 +78,6 @@ def test_body():
             body=DATA,
         )
     )
-    connect.SERVER.close()
 
 
 @pytest.mark.parametrize('method', [
@@ -83,13 +86,12 @@ def test_body():
     ('POST'),
     ('DELETE'),
 ])
-def test_method(method):
+def test_method(server, method):
 
     def on_complete(rc, result):
         assert rc == 0
         assert result['method'] == method
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -97,10 +99,9 @@ def test_method(method):
             method=method,
         )
     )
-    connect.SERVER.close()
 
 
-def test_query():
+def test_query(server):
 
     def on_complete(rc, result):
         assert rc == 0
@@ -109,28 +110,25 @@ def test_query():
         assert result['query']['foo'] == 'bar'
         assert result['query']['akk'] == 'eek'
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
             URL + '?foo=bar&akk=eek',
         )
     )
-    connect.SERVER.close()
 
 
 @pytest.mark.parametrize('method,body,has_query_string', [
     ('GET', dict(this='is', a='test'), True),
     ('PUT', dict(that='was', a='test'), False),
 ])
-def test_dict_body(method, body, has_query_string):
+def test_dict_body(server, method, body, has_query_string):
 
     def on_complete(rc, result):
         assert rc == 0
         assert (len(result['query_string']) > 0) is has_query_string
         assert (len(result['body']) > 0) is not has_query_string
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -139,14 +137,13 @@ def test_dict_body(method, body, has_query_string):
             method=method,
         )
     )
-    connect.SERVER.close()
 
 
 @pytest.mark.parametrize('timeout,pause,is_timeout', [
     (100, 1, False),
     (1, 100, True),
 ])
-def test_timeout(timeout, pause, is_timeout):
+def test_timeout(server, timeout, pause, is_timeout):
 
     class Handler(connect.ConnectHandler):
 
@@ -163,7 +160,6 @@ def test_timeout(timeout, pause, is_timeout):
         else:
             assert rc == 0
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -172,10 +168,9 @@ def test_timeout(timeout, pause, is_timeout):
             handler=Handler,
         )
     )
-    connect.SERVER.close()
 
 
-def test_wrapper():
+def test_wrapper(server):
 
     class Wrapper(object):
         def __init__(self, result):
@@ -185,7 +180,6 @@ def test_wrapper():
         assert rc == 0
         assert isinstance(result, Wrapper)
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -193,16 +187,14 @@ def test_wrapper():
             wrapper=Wrapper,
         )
     )
-    connect.SERVER.close()
 
 
-def test_headers():
+def test_headers(server):
 
     def on_complete(rc, result):
         assert rc == 0
         assert result['headers']['whatever'] == 'yeah'
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -210,10 +202,9 @@ def test_headers():
             headers=dict(whatever='yeah'),
         )
     )
-    connect.SERVER.close()
 
 
-def test_form():
+def test_form(server):
 
     def on_complete(rc, result):
         assert rc == 0
@@ -224,7 +215,6 @@ def test_form():
                 'yeah=whatever&whatever=yeah'
             )
 
-    connect.SERVER.add_server(PORT, _TestServer)
     connect.run(
         connect.connect(
             on_complete,
@@ -233,4 +223,3 @@ def test_form():
             is_form=True,
         )
     )
-    connect.SERVER.close()
