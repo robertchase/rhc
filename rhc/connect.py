@@ -167,6 +167,13 @@ class ConnectHandler(HTTPHandler):
         self.check_kwargs()
 
     def check_kwargs(self):
+        """ Check additional keyword args
+
+            In a ConnectHandler subclass, additional keyword arguments can be
+            handled by overriding this method.
+
+            The default behavior is to accept none.
+        """
         kwargs = self.context.kwargs
         if len(kwargs) > 0:
             raise TypeError(
@@ -320,7 +327,7 @@ class ConnectHandler(HTTPHandler):
             log.debug('recv: %s', self.http_message)
 
         try:
-            evaluate = self.context.evaluate or self.evaluate
+            evaluate = self.context.evaluate or self.__class__.evaluate
             result = evaluate(self)
         except Exception as e:
             return self.done(str(e), 1)

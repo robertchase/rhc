@@ -32,6 +32,7 @@ import urlparse
 
 from rhc.database.db import DB
 from rhc.httphandler import HTTPHandler
+from rhc.task import Task, inspect_parameters
 
 import logging
 log = logging.getLogger(__name__)
@@ -140,6 +141,146 @@ class RESTRequest(object):
             else:
                 self._json = {n: v for n, v in urlparse.parse_qsl(self.http_content)}
         return self._json
+
+    def call(self, fn, args=None, kwargs=None, on_success=None,
+             on_success_code=None, on_error=None, on_none=None,
+             on_none_404=False):
+        """ Call an async function.
+
+        Allows for flexible handling of the return states of async function
+        calls.
+
+        Parameters:
+            fn - callable async function (See Note 1)
+
+            args - None, scalar, tuple or list
+                Positional arguments to be passed to fn.
+
+            kwargs - None or dict
+                Keyword arguments to be passed to fn.
+
+            on_success - callable
+                called if specified and rc == 0 and if none of on_success_code,
+                on_none or on_none_404 apply
+                    on_success(request, result)
+
+            on_success_code - int
+                if specified and rc == 0 and if neither of on_none or
+                on_none_404 apply
+                    self.respond(int)
+
+            on_error - callable
+                called if specified and rc != 0
+                    on_error(request, result)
+
+            on_none - callable
+                called if specified and rc == 0 and result is None and if
+                on_none_404 does not apply
+                    on_none(request, None)
+
+            on_none_404 - boolean
+                if specified and rc == 0 and result is None
+                    self.respond(404)
+
+        Notes:
+
+            1.  An async function is structured like this:
+
+                    fn(callback, *args, **kwargs)
+
+                When the function is complete, it calls callback with two
+                parameters:
+
+                    rc - 0 for success, non-zero for error
+                    result - function response on success, message on error
+
+            2. If the first parameter of fn (from inspection) is named 'task',
+               then an rhc.Task object is passed instead of a callable.
+
+        Example:
+
+            def on_load(task, result):
+                pass
+
+            task.call(
+                load,
+                args=id,
+                on_success=on_load,
+            )
+
+            This will call the load function, followed by on_load if the load
+            function completes sucessfully.
+        """
+
+        def cb(rc, result):
+            if rc == 0:
+                _callback(self, fn, result, on_success, on_success_code,
+                          on_none, on_none_404)
+            else:
+                _callback_error(self, fn, result, on_error)
+
+        if args is None:
+            args = ()
+        elif not isinstance(args, (list, tuple)):
+            args = (args,)
+        if kwargs is None:
+            kwargs = {}
+
+        self.delay()
+
+        task = inspect_parameters(fn, kwargs)
+
+        if task:
+            cb = Task(cb, self.id)
+
+        try:
+            log.debug('request.call, cid=%s fn=%s %s', self.id, fn,
+                      'as task' if task else '')
+            fn(cb, *args, **kwargs)
+            self.delay()
+        except Exception:
+            log.exception('cid=%s: exception on call')
+            self.respond(500)
+
+
+def _callback(request, fn, result, on_success, on_success_code, on_none, on_none_404):
+    if result is None and on_none_404:
+        log.debug('request.callback, cid=%s, on_none_404', request.id)
+        request.respond(404)
+    elif result is None and on_none:
+        try:
+            log.debug('request.callback, cid=%s, on_none fn=%s', request.id, on_none)
+            on_none(request, None)
+        except Exception:
+            log.exception('running on_none callback')
+            request.respond(500)
+    elif on_success_code:
+        log.debug('request.callback, cid=%s, on_success_code code=%s', request.id, on_success_code)
+        request.respond(on_success_code)
+    elif on_success:
+        try:
+            log.debug('request.callback, cid=%s, on_success fn=%s', request.id, on_success)
+            on_success(request, result)
+        except Exception:
+            log.exception('running on_success callback')
+            request.respond(500)
+    else:
+        log.debug('request.callback, cid=%s, default success', request.id)
+        request.respond(200, request.response or result)
+
+
+def _callback_error(request, fn, result, on_error):
+    if on_error:
+        try:
+            log.debug('request.callback cid=%s, on_error fn=%s', request.id, on_error)
+            on_error(request, result)
+        except Exception:
+            log.exception('running on_error callback: %s', result)
+            request.respond(500)
+    else:
+        log.debug('request.callback cid=%s, default error', request.id)
+        log.warning('cid=%s, error: %s', request.id, result)
+        request.respond(500)
 
 
 class RESTResult(object):

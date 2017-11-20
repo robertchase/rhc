@@ -22,14 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
 
+import inspect
 import logging
 log = logging.getLogger(__name__)
 
 
 class Task(object):
 
-    def __init__(self, callback):
-        self.callback = callback
+    def __init__(self, callback, cid=None):
+        self._callback = callback
+        self.cid = cid
         self.final = None  # callable executed before callback (error or success)
         self.is_done = False
 
@@ -75,6 +77,145 @@ class Task(object):
                 log.warning('failure running task final: %s', str(e))
         self.is_done = True
         self.callback(rc, result)
+
+    @property
+    def callback(self):
+        # TODO implement cleanup (see spindrift)
+        # for cleanup in self._cleanup:
+        #     cleanup()
+        return self._callback
+
+    def call(self, fn, args=None, kwargs=None, on_success=None, on_none=None,
+             on_error=None, on_timeout=None):
+        """ Call an async function.
+
+        Allows for flexible handling of the return states of async function
+        calls.
+
+        Parameters:
+            fn - callable async function (See Note 1)
+
+            args - None, scalar, tuple or list
+                Positional argments to be passed to fn.
+
+            kwargs - None or dict
+                Keyword argments to be passed to fn.
+
+            on_success - callable
+                called if specified and rc == 0 and
+                if none of on_success_code, on_none and on_none_404 apply
+                    on_success(task, result)
+
+            on_error - callable
+                called if specified and rc != 0
+                    on_error(task, result)
+
+            on_none - callable
+                called if specified and rc == 0 and result is None
+                    on_none(task, None)
+
+        Notes:
+
+            1.  An async function is structured like this:
+
+                    fn(callback, *args, **kwargs)
+
+                When the function is complete, it calls callback with two
+                parameters:
+
+                    rc - 0 for success, non-zero for error
+                    result - function response on success, message on error
+
+            2. If the first parameter of fn (from inspection) is named 'task',
+               then an rhc.Task object is passed instead of a callable.
+
+        Example:
+
+            def on_load(task, result):
+                pass
+
+            task.call(
+                load,
+                args=id,
+                on_success=on_load,
+            )
+
+            This will call the load function, followed by on_load if the load
+            function completes sucessfully.
+        """
+
+        self.is_done = False
+
+        def cb(rc, result):
+            if rc == 0:
+                _callback(self, fn, result, on_success, on_none)
+            else:
+                _callback_error(self, fn, result, on_error, on_timeout)
+            self.is_done = True
+
+        if args is None:
+            args = ()
+        elif not isinstance(args, (tuple, list)):
+            args = (args,)
+
+        if kwargs is None:
+            kwargs = {}
+
+        task = inspect_parameters(fn, kwargs)
+
+        if task:
+            cb = Task(cb, self.cid)
+
+        log.debug('task.call fn=%s %s', fn, 'as task' if task else '')
+        fn(cb, *args, **kwargs)
+
+
+def inspect_parameters(fn, kwargs):
+
+    task = False
+
+    # get a list of function parameters
+    args = inspect.getargspec(fn).args
+
+    # is the first parameter named 'task'
+    if len(args) and args[0] == 'task':
+        task = True
+
+    return task
+
+
+def _callback(task, fn, result, on_success, on_none):
+    if on_none and result is None:
+        try:
+            log.debug('task.callback, cid=%s, on_none fn=%s', task.cid, on_none)
+            return on_none(task, result)
+        except Exception as e:
+            return task.callback(1, 'exception during on_none: %s' % e)
+    if on_success:
+        try:
+            log.debug('task.callback, cid=%s, on_success fn=%s', task.cid, on_success)
+            return on_success(task, result)
+        except Exception as e:
+            return task.callback(1, 'exception during on_success: %s' % e)
+    log.debug('task.callback, cid=%s, default success callback', task.cid)
+    task.callback(0, result)
+
+
+def _callback_error(task, fn, result, on_error, on_timeout):
+    if on_timeout and result == 'timeout':
+        try:
+            log.debug('task.callback, cid=%s, on_timeout fn=%s', task.cid, on_timeout)
+            return on_timeout(task, result)
+        except Exception as e:
+            return task.callback(1, 'exception during on_timeout: %s' % e)
+    if on_error:
+        try:
+            log.debug('task.callback, cid=%s, on_error fn=%s', task.cid, on_error)
+            return on_error(task, result)
+        except Exception as e:
+            return task.callback(1, 'exception during on_error: %s' % e)
+    log.debug('task.callback, cid=%s, default error callback', task.cid)
+    task.callback(1, result)
 
 
 def wrap(callback_cmd, *args, **kwargs):
