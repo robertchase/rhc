@@ -31,59 +31,25 @@ class Task(object):
 
     def __init__(self, callback, cid=None):
         self._callback = callback
+        self._stack = [None]
         self.cid = cid
         self.final = None  # callable executed before callback (error or success)
-        self.is_done = False
 
-    def defer(self, task_cmd, partial_callback, final_fn=None):
-        ''' defer the task until partial_callback completes; then call task_cmd
+    @property
+    def callback(self):
+        return self._callback
 
-            if partial_callback does not complete successfully, then task_cmd is not called;
-            instead, the error is handled by calling error on the task. final_fn, if
-            specified, is always called.
+    @property
+    def is_done(self):
+        return self._callback is None
 
-            Parameters:
-                task_cmd         - called with result of partial_callback on success
-                                   task_cmd(task, result)
-                partial_callback - function that takes a callback_fn
-                                   callback_fn is eventually called with (rc, result)
-                                   if rc != 0, partial_callback failed
-                final_fn         - a function that is called once after the partial_callback
-                                   is complete. it takes no parameters.
-        '''
-        def on_defer(rc, result):
-            if final_fn:
-                try:
-                    final_fn()
-                except Exception as e:
-                    log.warning('failure running final_fn: %s', str(e))
-            if rc == 0:
-                task_cmd(self, result)
-            else:
-                self.error(result)
-        partial_callback(on_defer)
-        return self
-
-    def error(self, message):
-        self.respond(message, 1)
-
-    def respond(self, result, rc=0):
-        if self.is_done:
-            return
+    def on_done(self):
         if self.final:
             try:
                 self.final()
             except Exception as e:
-                log.warning('failure running task final: %s', str(e))
-        self.is_done = True
-        self.callback(rc, result)
-
-    @property
-    def callback(self):
-        # TODO implement cleanup (see spindrift)
-        # for cleanup in self._cleanup:
-        #     cleanup()
-        return self._callback
+                log.warning('cid=%s, failure running task final: %s', self.cid,
+                            str(e))
 
     def call(self, fn, args=None, kwargs=None, on_success=None, on_none=None,
              on_error=None, on_timeout=None):
@@ -144,14 +110,15 @@ class Task(object):
             function completes sucessfully.
         """
 
-        self.is_done = False
-
         def cb(rc, result):
             if rc == 0:
                 _callback(self, fn, result, on_success, on_none)
             else:
                 _callback_error(self, fn, result, on_error, on_timeout)
-            self.is_done = True
+
+        def task_cb(rc, result):
+            self._callback = self._stack.pop()
+            cb(rc, result)
 
         if args is None:
             args = ()
@@ -161,13 +128,61 @@ class Task(object):
         if kwargs is None:
             kwargs = {}
 
-        task = inspect_parameters(fn, kwargs)
+        has_task = inspect_parameters(fn, kwargs)
+        if has_task:
+            self._stack.append(self._callback)
+            self._callback = task_cb
+            callback = self
+        else:
+            callback = cb
 
-        if task:
-            cb = Task(cb, self.cid)
+        log.debug('task.call fn=%s %s', fn, 'as task' if has_task else '')
+        fn(callback, *args, **kwargs)
 
-        log.debug('task.call fn=%s %s', fn, 'as task' if task else '')
-        fn(cb, *args, **kwargs)
+    def defer(self, task_cmd, partial_callback, final_fn=None):
+        # DEPRECATED: use call
+        ''' defer the task until partial_callback completes; then call task_cmd
+
+            if partial_callback does not complete successfully, then task_cmd is not called;
+            instead, the error is handled by calling error on the task. final_fn, if
+            specified, is always called.
+
+            Parameters:
+                task_cmd         - called with result of partial_callback on success
+                                   task_cmd(task, result)
+                partial_callback - function that takes a callback_fn
+                                   callback_fn is eventually called with (rc, result)
+                                   if rc != 0, partial_callback failed
+                final_fn         - a function that is called once after the partial_callback
+                                   is complete. it takes no parameters.
+        '''
+        def on_defer(rc, result):
+            if final_fn:
+                try:
+                    final_fn()
+                except Exception as e:
+                    log.warning('failure running final_fn: %s', str(e))
+            if rc == 0:
+                task_cmd(self, result)
+            else:
+                self.error(result)
+        partial_callback(on_defer)
+        return self
+
+    def error(self, message):
+        # DEPRECATED
+        self.respond(message, 1)
+
+    def respond(self, result, rc=0):
+        # DEPRECATED: use callback
+        if self.is_done:
+            return
+        if self.final:
+            try:
+                self.final()
+            except Exception as e:
+                log.warning('failure running task final: %s', str(e))
+        self.callback(rc, result)
 
 
 def inspect_parameters(fn, kwargs):
@@ -182,6 +197,17 @@ def inspect_parameters(fn, kwargs):
         task = True
 
     return task
+
+
+def catch_exceptions(message):
+    def _catch_exceptions(task_handler):
+        def inner(task, *args, **kwargs):
+            try:
+                return task_handler(task, *args, **kwargs)
+            except Exception:
+                log.exception(message)
+        return inner
+    return _catch_exceptions
 
 
 def _callback(task, fn, result, on_success, on_none):
@@ -218,12 +244,19 @@ def _callback_error(task, fn, result, on_error, on_timeout):
     task.callback(1, result)
 
 
+#
+# STOP USING THIS defer-able STUFF
+#
+
+
 def wrap(callback_cmd, *args, **kwargs):
+    # DEPRECATED yucky complexity
     ''' helper function callback_cmd -> partially executed partial '''
     return partial(callback_cmd)(*args, **kwargs)
 
 
 def from_callback(task_cmd):
+    # DEPRECATED yucky complexity
     ''' helper function callback_cmd -> executing partial
 
         if the caller invokes the wrapped or decorated task_cmd
@@ -240,6 +273,7 @@ def from_callback(task_cmd):
 
 
 def partial(fn):
+    # DEPRECATED yucky complexity
     def _args(*args, **kwargs):
         def _callback(callback_fn):
             task = Task(callback_fn)
@@ -247,14 +281,3 @@ def partial(fn):
             return task
         return _callback
     return _args
-
-
-def catch_exceptions(message):
-    def _catch_exceptions(task_handler):
-        def inner(task, *args, **kwargs):
-            try:
-                return task_handler(task, *args, **kwargs)
-            except Exception:
-                log.exception(message)
-        return inner
-    return _catch_exceptions

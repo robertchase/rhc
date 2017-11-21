@@ -30,11 +30,6 @@ def on_unhappy(task, result):
     task.callback(0, result)
 
 
-def task_callback(task):
-    assert isinstance(task, rhc_task.Task)
-    task.callback(0, 'task_callback')
-
-
 @pytest.fixture
 def _task():
 
@@ -71,6 +66,11 @@ def test_error(_task):
     )
 
 
+def task_callback(task):
+    assert isinstance(task, rhc_task.Task)
+    task.callback(0, 'task_callback')
+
+
 def test_task_callback(_task):
 
     def on_success(task, result):
@@ -81,3 +81,20 @@ def test_task_callback(_task):
         task_callback,
         on_success=on_success,
     )
+
+
+def test_task_persist(_task):
+    """ show that the task object is the same throughout """
+
+    _task.on_success = False  # start False
+
+    def on_success(task, result):
+        task.on_success = True  # change to True in success function
+        task.callback(0, result)
+
+    _task.call(
+        task_callback,
+        on_success=on_success,
+    )
+
+    assert _task.on_success  # still True out here (same object)

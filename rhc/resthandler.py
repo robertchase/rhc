@@ -61,58 +61,6 @@ class RESTRequest(object):
     def id(self):
         return self.handler.id
 
-    def defer(self, deferred_fn, immediate_fn, error_fn=None, error_msg=None, error_200=False):
-        '''
-            defer the request until immediate_fn completes; then call deferred_fn
-
-            if immediate_fn does not complete succesfully, then deferred_fn is not called;
-            instead, the error is handled by responding on the request. the default error
-            response parameters are (400, result), which can be overridden in several ways
-            with the optional kwargs described below.
-
-            Parameters:
-                deferred_fn  - called with result of immediate_fn on success
-                               deferred_fn(request, result)
-                immediate_fn - function that takes a callback_fn
-                               callback_fn is eventually called with (rc, result)
-                               if rc != 0, immediate_fn failed
-                error_fn     - called with (request, result) if immediate_fn fails
-                               must respond on the request or risk hanging the connection
-                error_msg    - used in lieu of result if immediate_fn fails
-                               result is logged as a warning
-                error_200    - if True, respond with (200, {"error": result})
-
-            Notes:
-
-                1. deferred_fn is for the happy-path. it is not called with the (rc, result)
-                   pattern, but is instead called with (request, result). the idea is that
-                   the handing of the request is what is deferred by this method, and that
-                   if everthing is working, we keep going sequentially through the logic.
-                   the deferred_fn is meant to mirror a rest handler's signature.
-
-                2. the immediate_fn is called with a callback as the only parameter and
-                   is expected to invoke that callback with the (rc, result) pattern upon
-                   completion. rc is 0 (zero) for successful completion; otherwise non-zero.
-
-                3. immediate_fn is expected to perform an async operation, although it
-                   doesn't have to. if immediate_fn is not async, it makes more sense to
-                   call it inline.
-        '''
-        def on_defer(rc, result):
-            if rc == 0:
-                return deferred_fn(self, result)  # happy path
-            if error_fn:
-                return error_fn(self, result)
-            if error_msg:
-                log.warning('error cid=%s: %s', self.handler.id, result)
-                result = error_msg
-            if error_200:
-                return self.respond({'error': result})
-            self.respond(400, result)
-
-        self.delay()
-        immediate_fn(on_defer)
-
     def respond(self, *args, **kwargs):
         '''
             the args/kwargs usually match the RESTResult __init__ method
@@ -241,6 +189,59 @@ class RESTRequest(object):
         except Exception:
             log.exception('cid=%s: exception on call')
             self.respond(500)
+
+    def defer(self, deferred_fn, immediate_fn, error_fn=None, error_msg=None, error_200=False):
+        # DEPRECATED: use call
+        '''
+            defer the request until immediate_fn completes; then call deferred_fn
+
+            if immediate_fn does not complete succesfully, then deferred_fn is not called;
+            instead, the error is handled by responding on the request. the default error
+            response parameters are (400, result), which can be overridden in several ways
+            with the optional kwargs described below.
+
+            Parameters:
+                deferred_fn  - called with result of immediate_fn on success
+                               deferred_fn(request, result)
+                immediate_fn - function that takes a callback_fn
+                               callback_fn is eventually called with (rc, result)
+                               if rc != 0, immediate_fn failed
+                error_fn     - called with (request, result) if immediate_fn fails
+                               must respond on the request or risk hanging the connection
+                error_msg    - used in lieu of result if immediate_fn fails
+                               result is logged as a warning
+                error_200    - if True, respond with (200, {"error": result})
+
+            Notes:
+
+                1. deferred_fn is for the happy-path. it is not called with the (rc, result)
+                   pattern, but is instead called with (request, result). the idea is that
+                   the handing of the request is what is deferred by this method, and that
+                   if everthing is working, we keep going sequentially through the logic.
+                   the deferred_fn is meant to mirror a rest handler's signature.
+
+                2. the immediate_fn is called with a callback as the only parameter and
+                   is expected to invoke that callback with the (rc, result) pattern upon
+                   completion. rc is 0 (zero) for successful completion; otherwise non-zero.
+
+                3. immediate_fn is expected to perform an async operation, although it
+                   doesn't have to. if immediate_fn is not async, it makes more sense to
+                   call it inline.
+        '''
+        def on_defer(rc, result):
+            if rc == 0:
+                return deferred_fn(self, result)  # happy path
+            if error_fn:
+                return error_fn(self, result)
+            if error_msg:
+                log.warning('error cid=%s: %s', self.handler.id, result)
+                result = error_msg
+            if error_200:
+                return self.respond({'error': result})
+            self.respond(400, result)
+
+        self.delay()
+        immediate_fn(on_defer)
 
 
 def _callback(request, fn, result, on_success, on_success_code, on_none, on_none_404):
