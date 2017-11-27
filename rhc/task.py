@@ -30,18 +30,17 @@ log = logging.getLogger(__name__)
 class Task(object):
 
     def __init__(self, callback, cid=None):
-        self._callback = callback
-        self._stack = [None]
+        self._callback = [callback]
         self.cid = cid
         self.final = None  # callable executed before callback (error or success)
 
     @property
     def callback(self):
-        return self._callback
+        return self._callback.pop()
 
     @property
     def is_done(self):
-        return self._callback is None
+        return len(self._callback) == 0
 
     def on_done(self):
         if self.final:
@@ -116,10 +115,6 @@ class Task(object):
             else:
                 _callback_error(self, fn, result, on_error, on_timeout)
 
-        def task_cb(rc, result):
-            self._callback = self._stack.pop()
-            cb(rc, result)
-
         if args is None:
             args = ()
         elif not isinstance(args, (tuple, list)):
@@ -130,14 +125,15 @@ class Task(object):
 
         has_task = inspect_parameters(fn, kwargs)
         if has_task:
-            self._stack.append(self._callback)
-            self._callback = task_cb
+            self._callback.append(cb)
             callback = self
         else:
             callback = cb
 
-        log.debug('task.call fn=%s %s', fn, 'as task' if has_task else '')
+        log.debug('task.call cid=%s fn=%s %s', self.cid, fn,
+                  'as task' if has_task else '')
         fn(callback, *args, **kwargs)
+        return self
 
     def defer(self, task_cmd, partial_callback, final_fn=None):
         # DEPRECATED: use call
