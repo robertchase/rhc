@@ -4,3 +4,6 @@ MANIFEST
 dist/
 .ropeproject
 .DS_Store
+.cache*
+.coverage*
+
