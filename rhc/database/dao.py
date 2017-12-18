@@ -25,7 +25,7 @@ from datetime import datetime, date
 from itertools import chain
 import json
 
-from rhc.database.db import DB
+from rhc.database import db
 from rhc.database.query import Query
 
 
@@ -49,7 +49,7 @@ class DAO(object):
         self._validate(kwargs)
         self._normalize(kwargs)
         self.on_init(kwargs)
-        self._orig = {} if DB.delta else None
+        self._orig = {} if db.DB.delta else None
         if 'id' in kwargs:
             self.on_load(kwargs)
             self._cache_fields(data=kwargs)
@@ -64,7 +64,7 @@ class DAO(object):
     def FULL_TABLE_NAME(cls):
         table = '`%s`' % cls.TABLE
         if cls.DATABASE:
-            table = '`%s`.%s' % (DB.database_map(cls.DATABASE), table)
+            table = '`%s`.%s' % (db.DB.database_map(cls.DATABASE), table)
         return table
 
     def before_init(self, kwargs):
@@ -231,7 +231,7 @@ class DAO(object):
             stmt = 'UPDATE ' + self.FULL_TABLE_NAME() + ' SET ' + ','.join(['`%s`=%%s' % n for n in fields]) + ' WHERE id=%s'
             args = [self.__dict__[f] for f in fields]
             args.append(self.id)
-        with DB as cur:
+        with db.DB as cur:
             self._stmt = stmt
             self._executed_stmt = None
             cur.execute(stmt, args)
@@ -258,7 +258,7 @@ class DAO(object):
         pass
 
     def delete(self):
-        with DB as cur:
+        with db.DB as cur:
             cur.execute('DELETE from %s where `id`=%%s' % self.FULL_TABLE_NAME(), self.id)
 
     def children(self, cls):
@@ -331,7 +331,7 @@ class DAO(object):
         query = 'SELECT COUNT(*) FROM `%s`' % cls.TABLE
         if where:
             query += ' WHERE ' + where
-        with DB as cur:
+        with db.DB as cur:
             cur.execute(query, arg)
             cnt = cur.fetchone()[0]
         return cnt

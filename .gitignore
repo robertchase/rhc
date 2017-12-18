@@ -4,3 +4,8 @@ MANIFEST
 dist/
 .ropeproject
 .DS_Store
+.cache*
+.coverage*
+
+# unignore test certs
+!tests/cert/*

@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 '''
-from rhc.database.db import DB
+from rhc.database import db
 
 
 class Query(object):
@@ -117,7 +117,7 @@ class Query(object):
         return result
 
     def _execute(self, stmt, arg, after_execute):
-        with DB as cur:
+        with db.DB as cur:
             cur.execute(stmt, arg)
         self._executed_stmt = cur._executed
         if after_execute:
