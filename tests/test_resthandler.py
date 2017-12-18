@@ -1,28 +1,30 @@
-import unittest
+import pytest
 from rhc.resthandler import RESTMapper
 
 
-class RESTHandlerTest(unittest.TestCase):
+class TestRestHandler(object):
 
-    def setUp(self):
-        self.c = RESTMapper()
-        self.c.add('/test$', 1, 2, 3, 4)
+    @pytest.fixture
+    def mapper(self):
+        mapper = RESTMapper()
+        mapper.add('/test$', get=1, post=2, put=3, delete=4)
+        mapper.add('/foo$', get=1, post=2)
+        mapper.add('/foo$', put=5)
+        return mapper
 
-        self.c.add('/foo$', 1, 2)
-        self.c.add('/foo$', put=5)
+    @pytest.mark.parametrize('path, http_method, handler, group', [
+        ('/test', 'GET', 1, ()),
+        ('/testt', 'GET', None, None),
+        ('/foo', 'post', 2, ()),
+        ('/foo', 'put', 5, ())
+    ])
+    def test_basic(self, mapper, path, http_method, handler, group):
+        handler, group = mapper._match(path, http_method)
+        assert handler == handler
+        assert group == group
 
-    def test_basic(self):
-        h, g = self.c._match('/test', 'GET')
-        self.assertEqual(h, 1)
-        self.assertEqual(g, ())
-
-    def test_nomatch(self):
-        h, g = self.c._match('/testt', 'GET')
-        self.assertIsNone(h)
-        self.assertIsNone(g)
-
-    def test_multiple(self):
-        h, g = self.c._match('/foo', 'post')
-        self.assertEqual(h, 2)
-        h, g = self.c._match('/foo', 'put')
-        self.assertEqual(h, 5)
+    def test_multiple(self, mapper):
+        handler, group = mapper._match('/foo', 'post')
+        assert handler == 2
+        handler, group = mapper._match('/foo', 'put')
+        assert handler == 5
