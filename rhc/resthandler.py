@@ -351,9 +351,16 @@ class RESTHandler(HTTPHandler):
             on_rest_send(self, code, message, content, headers)
     '''
 
+    def __init__(self, *args, **kwargs):
+        super(RESTHandler, self).__init__(*args, **kwargs)
+        self._silent = False
+
     def on_http_data(self):
-        handler, groups = self.context._match(self.http_resource, self.http_method)
+        handler, groups, silent = self.context._match(
+            self.http_resource, self.http_method
+        )
         if handler:
+            self._silent = silent
             try:
                 request = RESTRequest(self)
                 self.on_rest_data(request, *groups)
@@ -416,20 +423,48 @@ class LoggingRESTHandler(RESTHandler):
         if not DB.reset():
             log.error('transaction not properly closed')
 
-    def on_open(self):
-        log.info('open: cid=%d, %s', self.id, self.name)
-
     def on_close(self):
-        log.info('close: cid=%s, reason=%s, t=%.4f, rx=%d, tx=%d', getattr(self, 'id', '.'), self.close_reason, time.time() - self.start, self.rxByteCount, self.txByteCount)
+        if self._silent:
+            return
+        log.info(
+            'close: cid=%s, reason=%s, t=%.4f, rx=%d, tx=%d',
+            getattr(self, 'id', '.'),
+            self.close_reason,
+            time.time() - self.start,
+            self.rxByteCount,
+            self.txByteCount
+        )
 
     def on_rest_data(self, request, *groups):
-        log.info('request cid=%d, method=%s, resource=%s, query=%s, groups=%s', self.id, request.http_method, request.http_resource, request.http_query_string, groups)
+        if self._silent:
+            return
+        log.info(
+            'request cid=%d, method=%s, resource=%s, query=%s, groups=%s',
+            self.id,
+            request.http_method,
+            request.http_resource,
+            request.http_query_string,
+            groups
+        )
 
     def on_rest_send(self, code, message, content, headers):
-        log.debug('response cid=%d, code=%d, message=%s, headers=%s', self.id, code, message, headers)
+        if self._silent:
+            return
+        log.debug(
+            'response cid=%d, code=%d, message=%s, headers=%s',
+            self.id,
+            code,
+            message,
+            headers
+        )
 
     def on_rest_no_match(self):
-        log.warning('no match cid=%d, method=%s, resource=%s', self.id, self.http_method, self.http_resource)
+        log.warning(
+            'no match cid=%d, method=%s, resource=%s',
+            self.id,
+            self.http_method,
+            self.http_resource
+        )
 
     def on_http_error(self):
         log.warning('http error cid=%d: %s', self.id, self.error)
@@ -463,7 +498,8 @@ class RESTMapper(object):
         '''convenience function for initialization '''
         pass
 
-    def add(self, pattern, get=None, post=None, put=None, delete=None):
+    def add(self, pattern, get=None, post=None, put=None, delete=None,
+            silent=False):
         '''
             Add a mapping between a URI and a CRUD method.
 
@@ -489,7 +525,8 @@ class RESTMapper(object):
                 in this case, my_func must be defined to take the
                 parameter.
         '''
-        self.__mapping.append(RESTMapping(pattern, get, post, put, delete))
+        self.__mapping.append(RESTMapping(pattern, get, post, put, delete,
+                                          silent))
 
     def _match(self, resource, method):
         '''
@@ -510,8 +547,8 @@ class RESTMapper(object):
             if m:
                 handler = mapping.method.get(method.lower())
                 if handler:
-                    return handler, m.groups()
-        return None, None
+                    return handler, m.groups(), mapping.silent
+        return None, None, False
 
 
 def import_by_pathname(target):
@@ -528,7 +565,7 @@ class RESTMapping(object):
 
     ''' container for one mapping definition '''
 
-    def __init__(self, pattern, get, post, put, delete):
+    def __init__(self, pattern, get, post, put, delete, silent):
         self.pattern = re.compile(pattern)
         self.method = {
             'get': import_by_pathname(get),
@@ -536,6 +573,7 @@ class RESTMapping(object):
             'put': import_by_pathname(put),
             'delete': import_by_pathname(delete),
         }
+        self.silent = silent
 
 
 def content_to_json(*fields, **kwargs):

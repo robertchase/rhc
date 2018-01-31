@@ -1,7 +1,7 @@
 # :required -optional=default
 #
 # SERVER :name :port
-#   ROUTE :pattern
+#   ROUTE :pattern -silent=False
 #     GET|PUT|POST|DELETE :path
 # CONNECTION :name :url -is_json=True -is_debug=False -timeout=5.0 -handler=None -setup=None -wrapper=None -setup=None
 #   HEADER :key -default=None -config=None -code=None

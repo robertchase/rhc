@@ -258,12 +258,15 @@ class Server(object):
 
 class Route(object):
 
-    def __init__(self, pattern):
+    def __init__(self, pattern, silent=False):
         self.pattern = pattern
         self.methods = {}
+        self.silent = config_file.validate_bool(silent)
 
     def __repr__(self):
-        return 'Route[pattern=%s, methods=%s]' % (self.pattern, self.methods)
+        return 'Route[pattern=%s, methods=%s, silent=%s]' % (
+            self.pattern, self.methods, self.silent
+        )
 
 
 class Method(object):

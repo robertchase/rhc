@@ -19,12 +19,12 @@ class TestRestHandler(object):
         ('/foo', 'put', 5, ())
     ])
     def test_basic(self, mapper, path, http_method, handler, group):
-        handler, group = mapper._match(path, http_method)
+        handler, group, _ = mapper._match(path, http_method)
         assert handler == handler
         assert group == group
 
     def test_multiple(self, mapper):
-        handler, group = mapper._match('/foo', 'post')
+        handler, group, _ = mapper._match('/foo', 'post')
         assert handler == 2
-        handler, group = mapper._match('/foo', 'put')
+        handler, group, _ = mapper._match('/foo', 'put')
         assert handler == 5
