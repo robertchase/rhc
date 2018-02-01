@@ -438,6 +438,7 @@ class LoggingRESTHandler(RESTHandler):
     def on_rest_data(self, request, *groups):
         if self._silent:
             return
+        log.info('open: cid=%d, %s', self.id, self.name)
         log.info(
             'request cid=%d, method=%s, resource=%s, query=%s, groups=%s',
             self.id,
@@ -459,6 +460,7 @@ class LoggingRESTHandler(RESTHandler):
         )
 
     def on_rest_no_match(self):
+        log.info('open: cid=%d, %s', self.id, self.name)
         log.warning(
             'no match cid=%d, method=%s, resource=%s',
             self.id,

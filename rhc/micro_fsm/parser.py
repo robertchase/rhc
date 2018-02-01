@@ -76,6 +76,7 @@ class Parser(object):
             add_server=self.act_add_server,
             add_setup=self.act_add_setup,
             add_teardown=self.act_add_teardown,
+            silent=self.act_silent,
         )
         self.error = None
         self.fsm.state = 'init'
@@ -224,6 +225,11 @@ class Parser(object):
             raise Exception('too many tokens specified')
         self.teardown = self.args[0]
 
+    def act_silent(self):
+        if len(self.args) != 1:
+            raise Exception('one argument must be specified')
+        self.server.set_silent(config_file.validate_bool(self.args[0]))
+
 
 class Config(object):
 
@@ -255,13 +261,16 @@ class Server(object):
     def add_method(self, method):
         self.route.methods[method.method] = method.path
 
+    def set_silent(self, flag):
+        self.route.silent = flag
+
 
 class Route(object):
 
-    def __init__(self, pattern, silent=False):
+    def __init__(self, pattern):
         self.pattern = pattern
         self.methods = {}
-        self.silent = config_file.validate_bool(silent)
+        self.silent = False
 
     def __repr__(self):
         return 'Route[pattern=%s, methods=%s, silent=%s]' % (
