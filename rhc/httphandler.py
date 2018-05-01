@@ -251,8 +251,11 @@ class HTTPHandler(BasicHandler):
             self.http_query_string = ''
             if res.query:
                 self.http_query_string = res.query
-                for n, v in urlparse.parse_qsl(res.query):
-                    self.http_query[n] = v
+                qs = urlparse.parse_qs(res.query)
+                for n, v in qs.items():
+                    if len(v) == 1:
+                        qs[n], = v
+                self.http_query = qs
 
         self.__state = self.__header
         return True

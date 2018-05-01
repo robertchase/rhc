@@ -155,6 +155,14 @@ def test_query_string(handler):
     assert handler.request.http_query_string == 'name=value&othername=othervalue'
 
 
+def test_query_string_array(handler):
+    handler.on_data('YO /this/is/a/test?name=value&name=othervalue HTTP/1.1\r\nHost:whatever\nContent-Length:0\r\n\r\n')
+    assert handler.request.http_resource == '/this/is/a/test'
+    assert len(handler.request.http_query['name']) == 2
+    assert 'value' in handler.request.http_query['name']
+    assert 'othervalue' in handler.request.http_query['name']
+
+
 def test_multipart(handler):
     data = '''POST /upload HTTP/1.1\r
 Host: localhost:3000\r
