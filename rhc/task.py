@@ -36,6 +36,8 @@ class Task(object):
 
     @property
     def callback(self):
+        if len(self._callback) == 1:
+            self.on_done()
         return self._callback.pop()
 
     @property
