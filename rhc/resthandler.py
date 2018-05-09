@@ -267,7 +267,7 @@ def _callback(request, fn, result, on_success, on_success_code, on_none, on_none
             request.respond(500)
     else:
         log.debug('request.callback, cid=%s, default success', request.id)
-        request.respond(200, request.response or result)
+        request.respond(200, result)
 
 
 def _callback_error(request, fn, result, on_error):
