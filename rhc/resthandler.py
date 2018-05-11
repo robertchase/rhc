@@ -420,12 +420,20 @@ class LoggingRESTHandler(RESTHandler):
 
     def __init__(self, socket, context):
         super(LoggingRESTHandler, self).__init__(socket, context)
+        self._is_log_open = False
         if not DB.reset():
             log.error('transaction not properly closed')
+
+    def _log_open(self):
+        if self._is_log_open:
+            return
+        self._is_log_open = True
+        log.info('open: cid=%d, %s', self.id, self.name)
 
     def on_close(self):
         if self._silent:
             return
+        self._log_open()
         log.info(
             'close: cid=%s, reason=%s, t=%.4f, rx=%d, tx=%d',
             getattr(self, 'id', '.'),
@@ -438,7 +446,7 @@ class LoggingRESTHandler(RESTHandler):
     def on_rest_data(self, request, *groups):
         if self._silent:
             return
-        log.info('open: cid=%d, %s', self.id, self.name)
+        self._log_open()
         log.info(
             'request cid=%d, method=%s, resource=%s, query=%s, groups=%s',
             self.id,
