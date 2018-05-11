@@ -183,6 +183,17 @@ class Task(object):
         self.callback(rc, result)
 
 
+def unpartial(partial):
+    """ turn a partial into a callback_fn
+
+        undo the badness
+    """
+    def _unpartial(cb, *args, **kwargs):
+        return partial(*args, **kwargs)(cb)
+
+    return _unpartial
+
+
 def inspect_parameters(fn, kwargs):
 
     task = False
