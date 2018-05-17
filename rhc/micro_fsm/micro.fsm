@@ -139,5 +139,7 @@ STATE old_route
         ACTION add_setup
     EVENT teardown
         ACTION add_teardown
+    EVENT silent
+        ACTION silent
 
     EVENT server old_server
