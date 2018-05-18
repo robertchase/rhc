@@ -337,7 +337,7 @@ class Connection(object):
             callback(0, result)
             return Mock()
         if not self.is_url_parsed:
-            return None
+            return callback(1, 'url not parsed')
         return _connect(callback, self.url, self.host, self.address, self.port, path, self.is_ssl, method, body, headers, is_json, _is_debug, _timeout, wrapper, setup, handler, _trace, kwargs)
 
     def connect(self, method, callback, path, *args, **kwargs):
