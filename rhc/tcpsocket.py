@@ -535,7 +535,8 @@ class BasicHandler(object):
         except socket.error as e:
             errnum, errmsg = e
             if errnum in (errno.EINTR, errno.EWOULDBLOCK):
-                self.on_send_error(errmsg)  # not fatal
+                self.error = errmsg
+                self.on_send_error()  # not fatal
                 self._sending = data
                 self._network._register(self._sock, EVENT_WRITE, self._do_write)
             else:
