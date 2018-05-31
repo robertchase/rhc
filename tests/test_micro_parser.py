@@ -223,3 +223,17 @@ def test_optional():
     config = p.config.connection.foo.resource.bar
     assert config.yeah is None
     assert config.bar == 'foo'
+
+
+def my_validate(x):
+    return x * 2
+
+
+def test_config_validate():
+    p = Parser.parse([
+        'CONFIG foo validate=tests.test_micro_parser.my_validate'
+    ])
+    assert p
+    assert p.config.foo is None
+    p.config._set('foo', 'a')
+    assert p.config.foo == 'aa'

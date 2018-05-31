@@ -1,3 +1,4 @@
+from importlib import import_module
 import re
 
 import rhc.config as config_file
@@ -106,15 +107,23 @@ class Parser(object):
         self.config._define(name, **kwargs)
 
     def _normalize_validator(self):
-        if self.kwargs.get('validate') is not None:
+        validator = self.kwargs.get('validate')
+        if validator is not None:
             try:
                 self.kwargs['validate'] = {
                     'int': config_file.validate_int,
                     'bool': config_file.validate_bool,
                     'file': config_file.validate_file,
-                }[self.kwargs['validate']]
+                }[validator]
+                return
             except KeyError:
-                raise Exception("validate must be one of 'int', 'bool', 'file'")
+                pass
+            try:
+                path, function = validator.rsplit('.', 1)
+                module = import_module(path)
+                self.kwargs['validate'] = getattr(module, function)
+            except Exception:
+                raise Exception('unable to load validator %s' % validator)
 
     def act_add_config(self):
         self._normalize_validator()
