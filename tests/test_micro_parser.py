@@ -15,6 +15,16 @@ def test_server():
     assert config.ssl.certfile is None
 
 
+def test_custom_handler():
+    p = Parser.parse(['SERVER test 12345'])
+    s = p.servers.values()[0]
+    assert s.handler is None
+
+    p = Parser.parse(['SERVER test 12345 handler=foo'])
+    s = p.servers.values()[0]
+    assert s.handler == 'foo'
+
+
 def test_route():
     p = Parser.parse([
         'SERVER test 12345',

@@ -255,9 +255,10 @@ class Config(object):
 
 class Server(object):
 
-    def __init__(self, name, port):
+    def __init__(self, name, port, handler=None):
         self.name = name
         self.port = int(port)
+        self.handler  = handler
         self.routes = []
 
     def __repr__(self):

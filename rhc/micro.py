@@ -101,7 +101,7 @@ def setup_servers(config, servers, is_new):
             for method, path in route.methods.items():
                 methods[method] = _import(path)
             mapper.add(route.pattern, silent=route.silent, **methods)
-        handler = _import(conf.handler, is_module=True) if hasattr(conf, 'handler') else MicroRESTHandler
+        handler = _import(server.handler) if server.handler else MicroRESTHandler
         SERVER.add_server(
             conf.port,
             handler,
