@@ -96,7 +96,7 @@ STATE resource
     EVENT connection connection
 
 STATE old_init
-    ENTER add_old_server
+    ENTER add_config_server
     EVENT config_server
         ACTION add_config_server
     EVENT config
