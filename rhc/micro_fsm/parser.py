@@ -86,6 +86,7 @@ class Parser(object):
         self.teardown = None
         self.connections = {}
         self._config_servers = {}
+        self._config_handlers = {}
         self.servers = {}
 
     @property
@@ -135,6 +136,7 @@ class Parser(object):
     def act_add_config_server(self):
         name, port = self.args
         self._config_servers[name] = port
+        self._config_handlers[name] = self.kwargs.get('handler')
 
     def act_add_connection(self):
         connection = Connection(*self.args, **self.kwargs)
@@ -212,7 +214,11 @@ class Parser(object):
 
     def act_add_old_server(self):
         name = self.args[0]
-        server = Server(name, self._config_servers.get(name), **self.kwargs)
+        port = self._config_servers.get(name)
+        handler = self._config_handlers.get(name)
+        if handler:
+            self.kwargs['handler'] = handler
+        server = Server(name, port, **self.kwargs)
         if server.port in [s.port for s in self.servers.values()]:
             self.error = 'duplicate SERVER port: %s' % server.port
         else:

@@ -25,6 +25,22 @@ def test_custom_handler():
     assert s.handler == 'foo'
 
 
+def test_old_custom_handler():
+    p = Parser.parse(
+        ['CONFIG_SERVER test 12345', 'SERVER test'],
+    )
+    s = p.servers.values()[0]
+    assert s.port == 12345
+    assert s.handler is None
+
+    p = Parser.parse(
+        ['CONFIG_SERVER test 12345 handler=foo', 'SERVER test'],
+    )
+    s = p.servers.values()[0]
+    assert s.handler == 'foo'
+    assert s.port == 12345
+
+
 def test_route():
     p = Parser.parse([
         'SERVER test 12345',
