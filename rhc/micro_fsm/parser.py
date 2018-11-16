@@ -211,8 +211,7 @@ class Parser(object):
             self._add_config('server.%s.ssl.certfile' % server.name, validator=config_file.validate_file)
 
     def act_add_old_server(self):
-        name = self.args[0]
-        server = Server(name, self._config_servers.get(name), **self.kwargs)
+        server = Server(*self.args, **self.kwargs)
         if server.port in [s.port for s in self.servers.values()]:
             self.error = 'duplicate SERVER port: %s' % server.port
         else:

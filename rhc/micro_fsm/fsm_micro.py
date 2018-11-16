@@ -15,7 +15,7 @@ from rhc.fsm.FSM import STATE, EVENT, FSM
 # add_teardown
 # silent
 def create(**actions):
-  S_old_init=STATE('old_init',enter=actions['add_config_server'])
+  S_old_init=STATE('old_init',enter=actions['add_old_server'])
   S_old_server=STATE('old_server',enter=actions['add_old_server'])
   S_route=STATE('route',enter=actions['add_route'])
   S_init=STATE('init')
