@@ -227,20 +227,28 @@ class HTTPHandler(BasicHandler):
         if line is False or line is None:
             return False
         toks = line.split()
-        if len(toks) < 3:
+        if len(toks) < 2:
             return self.__error('Invalid status line: too few tokens')
 
         # HTTP/1.[0|1] 200 OK
-        if toks[0] in ('HTTP/1.0', 'HTTP/1.1'):
+        if toks[0].startswith('HTTP'):
+            if len(toks) == 2:
+                self.http_status_message = ''
+            else:
+                self.http_status_message = ' '.join(toks[2:])
+            if toks[0] not in ('HTTP/1.0', 'HTTP/1.1'):
+                return self.__error('Invalid status line: not HTTP/1.0 or HTTP/1.1')
             try:
                 self.http_status_code = toks[1]
                 self.http_status_code = int(self.http_status_code)
             except ValueError:
                 return self.__error('Invalid status line: non-integer status code')
-            self.http_status_message = ' '.join(toks[2:])
 
         # GET /resource HTTP/1.[0|1]
         else:
+            if len(toks) < 3:
+                return self.__error('Invalid status line: too few tokens')
+
             if toks[2] not in ('HTTP/1.0', 'HTTP/1.1'):
                 return self.__error('Invalid status line: not HTTP/1.0 or HTTP/1.1')
             self.http_method = toks[0]

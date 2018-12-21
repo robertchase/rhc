@@ -52,6 +52,18 @@ def test_status_short(handler):
     assert handler.error == 'Invalid status line: too few tokens'
 
 
+def test_status_only_two_tokens(handler):
+    handler.on_data('HTTP/1.1 200 \r\n')
+    assert handler.is_open
+    assert handler.http_status_message == ''
+
+
+def test_status_good(handler):
+    handler.on_data('HTTP/1.1 200 OK\r\n')
+    assert handler.is_open
+    assert handler.http_status_message == 'OK'
+
+
 def test_status_no_http(handler):
     handler.on_data('HTTQ/1.1 HI THERE\r\n')
     assert handler.closed
