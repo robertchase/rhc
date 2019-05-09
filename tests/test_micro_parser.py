@@ -1,3 +1,5 @@
+import os
+
 from rhc.micro_fsm.parser import Parser
 
 
@@ -107,6 +109,38 @@ def test_connection():
     assert config.is_active is True
     assert config.is_debug is True
     assert config.timeout == 10.5
+
+
+def test_connection_config():
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+    ])
+    config = p.config.connection.foo
+    assert config.url == 'http://foo.com:10101'
+
+    os.environ['CONNECTION_FOO_URL'] = 'akk'
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+    ])
+    config = p.config.connection.foo
+    assert config.url == 'akk'
+
+
+def test_connection_header_config():
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'HEADER test default=yeah config=geez',
+    ])
+    config = p.config.connection.foo
+    assert config.header.geez == 'yeah'
+
+    os.environ['CONNECTION_FOO_HEADER_GEEZ'] = 'akk'
+    p = Parser.parse([
+        'CONNECTION foo http://foo.com:10101',
+        'HEADER test default=yeah config=geez',
+    ])
+    config = p.config.connection.foo
+    assert config.header.geez == 'akk'
 
 
 def test_header():

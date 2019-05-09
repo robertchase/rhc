@@ -148,7 +148,11 @@ class Parser(object):
             self.connections[connection.name] = connection
             self.connection = connection
             if connection.url is not None:
-                self._add_config('connection.%s.url' % connection.name, value=connection.url)
+                self._add_config(
+                    'connection.%s.url' % connection.name,
+                    value=connection.url,
+                    env='CONNECTION_%s_URL' % connection.name.upper(),
+                )
             self._add_config('connection.%s.is_active' % connection.name, value=True, validator=config_file.validate_bool)
             self._add_config('connection.%s.is_debug' % connection.name, value=connection.is_debug, validator=config_file.validate_bool)
             self._add_config('connection.%s.timeout' % connection.name, value=connection.timeout, validator=float)
@@ -160,7 +164,15 @@ class Parser(object):
         else:
             self.connection.add_header(header)
             if header.config:
-                self._add_config('connection.%s.header.%s' % (self.connection.name, header.config), value=header.default)
+                self._add_config(
+                    'connection.%s.header.%s' % (
+                        self.connection.name, header.config),
+                    value=header.default,
+                    env='CONNECTION_%s_HEADER_%s' % (
+                        self.connection.name.upper(),
+                        header.config.upper(),
+                    ),
+                )
 
     def act_add_resource_header(self):
         header = Header(*self.args, **self.kwargs)
