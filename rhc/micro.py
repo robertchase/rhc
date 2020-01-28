@@ -21,7 +21,10 @@ class _User(object):
 
     def service(self):
         if self.execute:
-            self.execute()
+            try:
+                self.execute()
+            except Exception:
+                log.exception('user function error:')
 
 
 USER = _User()
