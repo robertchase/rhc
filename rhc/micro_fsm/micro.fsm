@@ -1,5 +1,6 @@
 # :required -optional=default
 #
+# USER +path
 # SERVER :name :port
 #   ROUTE :pattern
 #     SILENT :boolean
@@ -14,6 +15,8 @@
 # TEARDOWN :path
 
 STATE init
+    EVENT user
+        ACTION add_user
     EVENT server server
     EVENT connection connection
     EVENT config_server old_init

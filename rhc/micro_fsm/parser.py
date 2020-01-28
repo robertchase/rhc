@@ -77,6 +77,7 @@ class Parser(object):
             add_server=self.act_add_server,
             add_setup=self.act_add_setup,
             add_teardown=self.act_add_teardown,
+            add_user=self.act_add_user,
             silent=self.act_silent,
         )
         self.error = None
@@ -88,6 +89,7 @@ class Parser(object):
         self._config_servers = {}
         self._config_handlers = {}
         self.servers = {}
+        self.user = None
 
     @property
     def is_new(self):
@@ -251,6 +253,11 @@ class Parser(object):
         if len(self.args) > 1:
             raise Exception('too many tokens specified')
         self.teardown = self.args[0]
+
+    def act_add_user(self):
+        if len(self.args) > 1:
+            raise Exception('too many tokens specified')
+        self.user = self.args[0]
 
     def act_silent(self):
         if len(self.args) != 1:

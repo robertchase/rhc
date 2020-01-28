@@ -14,6 +14,19 @@ from rhc import CONNECTIONS as connection
 log = logging.getLogger(__name__)
 
 
+class _User(object):
+
+    def __init__(self):
+        self.execute = None
+
+    def service(self):
+        if self.execute:
+            self.execute()
+
+
+USER = _User()
+
+
 class MicroContext(object):
 
     def __init__(self, http_max_content_length, http_max_line_length, http_max_header_count):
@@ -158,6 +171,11 @@ def setup_connections(config, connections):
         setattr(connection, c.name, conn)
 
 
+def setup_user(user):
+    if user:
+        USER.execute = _import(user)
+
+
 def start(config, setup):
     if setup:
         _import(setup)(config)
@@ -168,6 +186,7 @@ def run(sleep=100, max_iterations=100):
         try:
             SERVER.service(delay=sleep/1000.0, max_iterations=max_iterations)
             TIMERS.service()
+            USER.service()
         except KeyboardInterrupt:
             log.info('Received shutdown command from keyboard')
             break
@@ -218,6 +237,7 @@ if __name__ == '__main__':
         setup_servers(p.config, p.servers, p.is_new)
         if p.is_new:
             setup_connections(p.config, p.connections)
+        setup_user(p.user)
         start(p.config, p.setup)
         run()
         stop(p.teardown)
